@@ -1,0 +1,320 @@
+/* ============================================================
+   ASTROVIA SOLUTIONS — Design System
+   Dark Sci-Fi Corporativo · index.css
+   ============================================================ */
+
+/* Fontes primeiro: @import precisa vir antes de qualquer regra */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap");
+
+/* Tailwind v4 — substitui as três diretivas @tailwind do v3 */
+@import "tailwindcss";
+
+/* ------------------------------------------------------------
+   1. TOKENS DE MARCA (@theme = design tokens do Tailwind v4)
+   Gera automaticamente as classes: bg-void, text-titanium,
+   text-neon, border-plasma, font-display, tracking-brutal...
+------------------------------------------------------------ */
+@theme {
+  --color-void: #030305;
+  --color-void-soft: #08080d;
+  --color-void-line: rgba(255, 255, 255, 0.06);
+
+  --color-titanium: #8a8f98;
+  --color-titanium-dim: #3b3f47;
+  --color-titanium-bright: #d5d9e0;
+
+  --color-neon: #22d3ee; /* Ciano */
+  --color-plasma: #ff2fd0; /* Magenta */
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --tracking-brutal: -0.055em;
+  --tracking-hud: 0.42em;
+}
+
+@layer base {
+  :root {
+    --void: #030305;
+    --void-soft: #08080d;
+    --titanium: #8a8f98;
+    --titanium-dim: #3b3f47;
+    --neon: 34 211 238; /* Ciano  #22D3EE */
+    --plasma: 255 47 208; /* Magenta #FF2FD0 */
+    --line: rgba(255, 255, 255, 0.06);
+  }
+
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    background-color: var(--void);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--void);
+    color: #e7e9ec;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Links: o browser pinta <a> de azul/roxo por padrão.
+     Aqui eles herdam a cor do contexto — o design system decide. */
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  a:hover,
+  a:focus-visible {
+    color: #ffffff;
+  }
+  a:focus-visible {
+    outline: 1px solid rgb(var(--neon) / 0.7);
+    outline-offset: 4px;
+  }
+
+  img {
+    max-width: 100%;
+    display: block;
+  }
+
+  ::selection {
+    background: rgb(var(--neon) / 0.28);
+    color: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--void);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      rgb(var(--neon) / 0.45),
+      rgb(var(--plasma) / 0.45)
+    );
+    border-radius: 99px;
+  }
+
+  canvas {
+    display: block;
+    touch-action: none;
+  }
+}
+
+/* ------------------------------------------------------------
+   2. UTILITÁRIOS
+------------------------------------------------------------ */
+@layer utilities {
+  /* Rede de segurança: se o pipeline do Tailwind falhar (plugin
+     errado no PostCSS, @theme não aplicado), estes valores mantêm
+     a identidade de pé em vez de cair no estilo padrão do browser. */
+  .bg-void {
+    background-color: #030305;
+  }
+  .bg-void-soft {
+    background-color: #08080d;
+  }
+  .text-titanium {
+    color: #8a8f98;
+  }
+  .text-titanium-dim {
+    color: #3b3f47;
+  }
+  .text-titanium-bright {
+    color: #d5d9e0;
+  }
+  .font-display {
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Textura de ruído — overlay global.
+     Aplique em uma div fixa: <div className="bg-grain" /> */
+  .bg-grain {
+    position: fixed;
+    inset: -150%;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.16;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    will-change: transform;
+    animation: grain-shift 0.7s steps(3) infinite;
+  }
+
+  /* Variante estática (sem animação) para blocos isolados */
+  .bg-grain-static {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.12;
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* Vidro / borda de circuito */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.02);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .hairline {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(255, 255, 255, 0.12) 20%,
+      rgba(255, 255, 255, 0.12) 80%,
+      transparent
+    );
+  }
+
+  /* Tipografia técnica */
+  .text-outline {
+    color: transparent;
+    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.28);
+  }
+
+  .text-outline-neon {
+    color: transparent;
+    -webkit-text-stroke: 1px rgb(var(--neon) / 0.55);
+  }
+
+  .glow-neon {
+    text-shadow: 0 0 24px rgb(var(--neon) / 0.55),
+      0 0 60px rgb(var(--neon) / 0.22);
+  }
+
+  .glow-plasma {
+    text-shadow: 0 0 24px rgb(var(--plasma) / 0.5),
+      0 0 60px rgb(var(--plasma) / 0.2);
+  }
+
+  /* Máscara de fade nas bordas (marquee, listas) */
+  .mask-x-fade {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 12%,
+      #000 88%,
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 12%,
+      #000 88%,
+      transparent
+    );
+  }
+
+  .animate-marquee {
+    animation: marquee 28s linear infinite;
+  }
+
+  .animate-scan {
+    animation: scan 6s linear infinite;
+  }
+}
+
+/* ------------------------------------------------------------
+   2b. SEÇÕES + LENIS
+------------------------------------------------------------ */
+/* Fundo das seções: dissolve o canvas 3D e assenta no Deep Void */
+.section-shell {
+  background: #030305;
+}
+#sobre.section-shell {
+  background: linear-gradient(
+    to bottom,
+    rgba(3, 3, 5, 0) 0%,
+    rgba(3, 3, 5, 0.86) 12%,
+    #030305 30%,
+    #030305 100%
+  );
+}
+
+/* CSS recomendado pelo Lenis */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis:not(.lenis-autoToggle).lenis-stopped {
+  overflow: clip;
+}
+.lenis [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.animate-load {
+  animation: load 1.3s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------
+   3. KEYFRAMES
+------------------------------------------------------------ */
+@keyframes grain-shift {
+  0% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(-3%, 2%);
+  }
+  66% {
+    transform: translate(2%, -3%);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+
+@keyframes load {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(1200%);
+    opacity: 0;
+  }
+}
+
+/* Acessibilidade */
+@media (prefers-reduced-motion: reduce) {
+  .bg-grain,
+  .animate-marquee,
+  .animate-scan,
+  .animate-load {
+    animation: none !important;
+  }
+}
