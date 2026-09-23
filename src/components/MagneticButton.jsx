@@ -11,6 +11,7 @@ export default function MagneticButton({
   href = "#contato",
   variant = "primary",
   className = "",
+  ...rest
 }) {
   const ref = useRef(null);
   const x = useMotionValue(0);
@@ -41,6 +42,7 @@ export default function MagneticButton({
     <motion.a
       ref={ref}
       href={href}
+      {...rest}
       onMouseMove={handleMove}
       onMouseLeave={reset}
       style={{ x: sx, y: sy }}

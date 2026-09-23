@@ -12,10 +12,10 @@ function Corner({ className }) {
   );
 }
 
-function CaseChip({ index, label, meta }) {
+function CaseChip({ index, label, meta, href }) {
   return (
     <motion.a
-      href="#cases"
+      href={href}
       custom={index}
       variants={reveal}
       whileHover={{ y: -4 }}
@@ -95,7 +95,10 @@ export default function Hero() {
               <span className="text-white">agentes de IA</span>,{" "}
               <span className="text-white">experiências gamificadas</span> e{" "}
               <span className="text-white">interfaces WebGL</span> — do conceito
-              ao deploy.
+              ao deploy.{" "}
+              <span className="text-titanium-bright">
+                Um portfólio vivo: cada projeto abaixo está no ar.
+              </span>
             </motion.p>
 
             <motion.div
@@ -135,8 +138,8 @@ export default function Hero() {
             className="mt-12 flex flex-wrap items-center gap-4"
           >
             <MagneticButton href="#contato">Iniciar Projeto</MagneticButton>
-            <MagneticButton href="#cases" variant="ghost">
-              Ver Cases
+            <MagneticButton href="#portfolio" variant="ghost">
+              Ver portfólio vivo
             </MagneticButton>
           </motion.div>
         </motion.div>
@@ -144,9 +147,9 @@ export default function Hero() {
 
       <motion.div initial="hidden" animate="show" className="pb-8 pt-4">
         <div className="flex flex-wrap gap-3">
-          <CaseChip index={0} label="Agente Rodo" meta="AI · Dashboard" />
-          <CaseChip index={1} label="Brechó das Lobas" meta="E-commerce" />
-          <CaseChip index={2} label="Inglês Gamificado" meta="Game Mechanics" />
+          <CaseChip index={0} href="#case-lobas" label="Lobas Brechó" meta="E-commerce" />
+          <CaseChip index={1} href="#case-alerson" label="Dr. Alerson Ribeiro" meta="Cartão digital" />
+          <CaseChip index={2} href="#case-rodo" label="Agente Rodo" meta="Sistema · Logística" />
         </div>
 
         <motion.div

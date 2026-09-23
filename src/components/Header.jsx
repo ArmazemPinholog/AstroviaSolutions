@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { startScroll, stopScroll } from "../lib/smooth";
 import { reveal } from "../lib/motion";
 /* A logo é resolvida por glob: se `src/assets/logo.(png|svg|webp|jpg)`
    ainda não existir, o build NÃO quebra — o componente cai na marca
@@ -11,15 +13,28 @@ const logoModules = import.meta.glob("../assets/logo.{png,svg,webp,jpg,jpeg}", {
 const logoUrl = Object.values(logoModules)[0] ?? null;
 
 const NAV = [
-  { label: "Serviços", href: "#servicos" },
-  { label: "Cases", href: "#cases" },
-  { label: "Laboratório", href: "#laboratorio" },
+  { label: "Sobre", href: "#sobre" },
+  { label: "Portfólio", href: "#portfolio" },
+  { label: "Processo", href: "#processo" },
+  { label: "Destaque", href: "#destaque" },
   { label: "Contato", href: "#contato" },
 ];
 
 export default function Header() {
   const [clock, setClock] = useState("--:--:--");
   const [logoFailed, setLogoFailed] = useState(!logoUrl);
+  const [menu, setMenu] = useState(false);
+
+  useEffect(() => {
+    if (!menu) return;
+    stopScroll();
+    const onKey = (e) => e.key === "Escape" && setMenu(false);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      startScroll();
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
 
   useEffect(() => {
     const tick = () =>
@@ -103,6 +118,61 @@ export default function Header() {
           </a>
         ))}
       </nav>
+
+      {/* ---------- MENU MOBILE ---------- */}
+      <button
+        type="button"
+        onClick={() => setMenu(true)}
+        aria-label="Abrir menu"
+        className="glass flex h-11 w-11 items-center justify-center rounded-full md:hidden"
+      >
+        <span className="flex w-4 flex-col gap-1.5" aria-hidden>
+          <span className="h-px w-full bg-white" />
+          <span className="h-px w-2/3 bg-[#22d3ee]" />
+        </span>
+      </button>
+      {createPortal(
+      <AnimatePresence>
+        {menu && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex flex-col bg-[#030305]/96 px-6 py-6 backdrop-blur-xl md:hidden"
+          >
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMenu(false)}
+                aria-label="Fechar menu"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[#030305]"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                  <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.6" />
+                </svg>
+              </button>
+            </div>
+            <nav className="mt-10 flex flex-col gap-2">
+              {NAV.map((item, i) => (
+                <motion.a
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMenu(false)}
+                  initial={{ opacity: 0, y: 24 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 + i * 0.05 }}
+                  className="flex items-baseline gap-4 border-b border-white/[0.06] py-4 font-display text-4xl tracking-[-0.03em] text-white"
+                >
+                  <span className="font-mono text-[0.6rem] text-titanium-dim">0{i + 1}</span>
+                  {item.label}
+                </motion.a>
+              ))}
+            </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body
+      )}
 
       {/* ---------- STATUS HUD ---------- */}
       <div className="hidden items-center gap-3 lg:flex">
