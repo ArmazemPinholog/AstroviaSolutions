@@ -45,4 +45,21 @@ export const PROJECTS = [
     desc: "Sistema de operações para transporte rodoviário: quadro Kanban em tempo real, gestão de conjuntos da frota, check-in de documentos e relatórios. Aqui você vê uma demonstração bloqueada, com dados fictícios.",
     tags: ["Automação", "Supabase", "Real-time", "Kanban"],
   },
+  {
+    id: "barber",
+    n: "04",
+    title: "Barber Berserker",
+    kicker: "Barbearias · Agendamento & gestão",
+    // demo roda dentro do próprio site da Astrovia (public/demos/…):
+    // os dados são fictícios e ficam só no navegador de quem testa
+    url: "/demos/barber-berserker/index.html",
+    domain: "barber-berserker · demo interativa",
+    live: true,
+    demo: true,
+    badge: "demo interativa",
+    hint: "Agende como cliente ou entre em “Área da equipe” com o PIN 1234 (dono) ou 1111 (barbeiro).",
+    accent: "#C8161D",
+    desc: "Sistema white-label para barbearias: agendamento 24/7 em 3 cliques, caixa com comissão automática, fidelidade Runas, clube de assinatura, modo TV da recepção e relatórios. Teste à vontade — cada visitante tem a própria demo.",
+    tags: ["React", "Supabase", "White-label", "Agendamento"],
+  },
 ];
