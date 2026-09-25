@@ -94,7 +94,7 @@ export function BrowserWindow({ project, children, className = "", style }) {
               boxShadow: `0 0 8px ${locked ? "#ff2fd0" : "#22d3ee"}`,
             }}
           />
-          {locked ? "somente leitura" : "site ao vivo"}
+          {locked ? "somente leitura" : project.badge || "site ao vivo"}
         </span>
       </div>
       <div className="relative min-h-0 flex-1">{children}</div>

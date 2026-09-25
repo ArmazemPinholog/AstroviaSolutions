@@ -34,6 +34,11 @@ function ProjectPanel({ p, total }) {
                 {p.title}
               </h3>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-titanium">{p.desc}</p>
+              {p.hint && (
+                <p className="mt-2 max-w-xl font-mono text-[0.62rem] uppercase leading-relaxed tracking-[0.12em]" style={{ color: p.accent }}>
+                  ▸ {p.hint}
+                </p>
+              )}
             </div>
           </div>
 
@@ -47,7 +52,7 @@ function ProjectPanel({ p, total }) {
               className="ml-1 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 font-display text-[0.62rem] uppercase tracking-[0.2em] text-[#030305] transition-transform hover:scale-[1.04]"
             >
               {p.locked ? <LockIcon size={12} /> : <ExpandIcon size={12} />}
-              {p.locked ? "Ver demonstração" : "Ver em tela cheia"}
+              {p.locked ? "Ver demonstração" : p.demo ? "Testar a demo" : "Ver em tela cheia"}
             </button>
           </div>
         </div>
@@ -72,7 +77,7 @@ function ProjectPanel({ p, total }) {
                   className="group absolute inset-0 z-10 flex items-end justify-end p-4"
                 >
                   <span className="flex translate-y-2 items-center gap-2 rounded-full bg-[#030305]/85 px-3.5 py-2 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-white opacity-0 backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-                    <ExpandIcon size={11} /> interagir
+                    <ExpandIcon size={11} /> {p.demo ? "testar a demo" : "interagir"}
                   </span>
                 </button>
               )}

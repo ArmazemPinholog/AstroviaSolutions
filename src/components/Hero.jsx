@@ -150,6 +150,7 @@ export default function Hero() {
           <CaseChip index={0} href="#case-lobas" label="Lobas Brechó" meta="E-commerce" />
           <CaseChip index={1} href="#case-alerson" label="Dr. Alerson Ribeiro" meta="Cartão digital" />
           <CaseChip index={2} href="#case-rodo" label="Agente Rodo" meta="Sistema · Logística" />
+          <CaseChip index={3} href="#case-barber" label="Barber Berserker" meta="Demo interativa" />
         </div>
 
         <motion.div

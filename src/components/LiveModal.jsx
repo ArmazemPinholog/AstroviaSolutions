@@ -42,6 +42,11 @@ export default function LiveModal({ project, onClose }) {
                 {project.n} · {project.kicker}
               </p>
               <p className="truncate font-display text-lg text-white">{project.title}</p>
+              {project.hint && (
+                <p className="mt-0.5 hidden font-mono text-[0.58rem] uppercase tracking-[0.14em] md:block" style={{ color: project.accent }}>
+                  {project.hint}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {project.live ? (
