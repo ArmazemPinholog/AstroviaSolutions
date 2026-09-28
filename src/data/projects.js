@@ -7,9 +7,10 @@
 export const WHATSAPP_URL =
   "https://wa.me/5541988373685?text=Ol%C3%A1%2C%20Astrovia!%20Quero%20conversar%20sobre%20um%20projeto.";
 
-export const PROJECTS = [
+const LIST = [
   {
     id: "lobas",
+    chip: "E-commerce",
     n: "01",
     title: "Lobas Brechó",
     kicker: "E-commerce · Moda circular",
@@ -21,7 +22,25 @@ export const PROJECTS = [
     tags: ["React", "Three.js", "GSAP", "Branding"],
   },
   {
+    id: "luxe",
+    n: "02",
+    title: "LUXE Estética Avançada",
+    kicker: "Clínicas de estética · Agendamento & gestão",
+    chip: "Demo interativa",
+    // demo 100% fictícia rodando dentro do site da Astrovia (public/demos/luxe)
+    url: "/demos/luxe/index.html",
+    domain: "luxe-estetica · demo interativa",
+    live: true,
+    demo: true,
+    badge: "demo interativa",
+    hint: "Agende como cliente ou entre em “Área da equipe” com o PIN 1234 (proprietária) ou 1111 (profissional).",
+    accent: "#B08A4A",
+    desc: "Sistema premium para clínicas de estética: agendamento 24/7, ficha de anamnese com alertas, antes e depois, Cartão Fidelidade (Pérola → Diamante), Clube LUXE, caixa com comissões e relatórios. Tudo fictício — teste à vontade.",
+    tags: ["React", "Supabase", "White-label", "Estética"],
+  },
+  {
     id: "alerson",
+    chip: "Cartão digital",
     n: "02",
     title: "Dr. Alerson Ribeiro",
     kicker: "Advocacia · Cartão digital",
@@ -34,6 +53,7 @@ export const PROJECTS = [
   },
   {
     id: "rodo",
+    chip: "Sistema · Logística",
     n: "03",
     title: "Agente Rodo",
     kicker: "Logística · Sistema de operações",
@@ -47,6 +67,7 @@ export const PROJECTS = [
   },
   {
     id: "barber",
+    chip: "Demo interativa",
     n: "04",
     title: "Barber Berserker",
     kicker: "Barbearias · Agendamento & gestão",
@@ -63,3 +84,6 @@ export const PROJECTS = [
     tags: ["React", "Supabase", "White-label", "Agendamento"],
   },
 ];
+
+/* numeração automática (01, 02, …) na ordem da lista acima */
+export const PROJECTS = LIST.map((p, i) => ({ ...p, n: String(i + 1).padStart(2, "0") }));
