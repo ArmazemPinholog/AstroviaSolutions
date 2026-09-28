@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import MagneticButton from "./MagneticButton";
+import { PROJECTS } from "../data/projects";
 import { reveal, springSoft } from "../lib/motion";
 
 function Corner({ className }) {
@@ -20,22 +21,17 @@ function CaseChip({ index, label, meta, href }) {
       variants={reveal}
       whileHover={{ y: -4 }}
       transition={springSoft}
-      className="glass group relative flex min-w-[190px] flex-1 items-center justify-between rounded-xl px-4 py-3 no-underline"
+      className="glass group relative flex min-w-[160px] flex-1 flex-col rounded-xl px-4 py-3 no-underline"
     >
       <span
         aria-hidden
         className="absolute inset-x-4 top-0 h-px scale-x-0 bg-gradient-to-r from-transparent via-[#22d3ee] to-transparent transition-transform duration-500 group-hover:scale-x-100"
       />
-      <span className="flex flex-col">
-        <span className="font-display text-[0.65rem] uppercase tracking-[0.28em] text-titanium-dim">
-          Case 0{index + 1}
-        </span>
-        <span className="font-display text-sm text-titanium-bright transition-colors group-hover:text-white">
-          {label}
-        </span>
+      <span className="truncate font-mono text-[0.56rem] uppercase tracking-[0.2em] text-titanium-dim">
+        Case 0{index + 1} · <span className="text-titanium">{meta}</span>
       </span>
-      <span className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-titanium">
-        {meta}
+      <span className="mt-1 truncate font-display text-sm text-titanium-bright transition-colors group-hover:text-white">
+        {label}
       </span>
     </motion.a>
   );
@@ -147,10 +143,9 @@ export default function Hero() {
 
       <motion.div initial="hidden" animate="show" className="pb-8 pt-4">
         <div className="flex flex-wrap gap-3">
-          <CaseChip index={0} href="#case-lobas" label="Lobas Brechó" meta="E-commerce" />
-          <CaseChip index={1} href="#case-alerson" label="Dr. Alerson Ribeiro" meta="Cartão digital" />
-          <CaseChip index={2} href="#case-rodo" label="Agente Rodo" meta="Sistema · Logística" />
-          <CaseChip index={3} href="#case-barber" label="Barber Berserker" meta="Demo interativa" />
+          {PROJECTS.map((p, i) => (
+            <CaseChip key={p.id} index={i} href={`#case-${p.id}`} label={p.title} meta={p.chip} />
+          ))}
         </div>
 
         <motion.div
