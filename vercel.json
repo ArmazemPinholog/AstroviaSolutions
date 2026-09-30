@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/gestao", "destination": "/index.html" },
+    { "source": "/gestao/(.*)", "destination": "/index.html" }
+  ]
+}
