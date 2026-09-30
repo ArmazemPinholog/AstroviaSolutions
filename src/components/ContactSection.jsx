@@ -86,7 +86,11 @@ export default function ContactSection() {
           </nav>
         </div>
         <div className="mt-8 flex flex-col gap-2 border-t border-white/[0.05] pt-6 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-titanium-dim sm:flex-row sm:justify-between">
-          <span>© {new Date().getFullYear()} Astrovia Solutions · Curitiba / BR</span>
+          <span>
+            © {new Date().getFullYear()} Astrovia Solutions · Curitiba / BR
+            <span className="mx-2 text-white/10">|</span>
+            <a href="/gestao" className="text-titanium-dim transition-colors hover:text-[#22d3ee]">Área restrita</a>
+          </span>
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#22d3ee]" /> disponível para novos projetos
           </span>
