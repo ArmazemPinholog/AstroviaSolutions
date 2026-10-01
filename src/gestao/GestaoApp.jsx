@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Users, SquareKanban, FolderKanban, Wallet, ListChecks, UserCog, UserRound,
-  LogOut, RefreshCw, Menu, X, Lock, KeyRound,
+  LogOut, RefreshCw, Menu, X, Lock, KeyRound, Radar, Clapperboard,
 } from "lucide-react";
 import { sb, T } from "./supabase";
 import { Ctx, Btn, Field, Input, Card, Avatar } from "./ui";
 import Painel from "./pages/Painel";
 import Clientes from "./pages/Clientes";
 import Funil from "./pages/Funil";
+import Prospeccao from "./pages/Prospeccao";
+import Conteudo from "./pages/Conteudo";
 import Projetos from "./pages/Projetos";
 import Financeiro from "./pages/Financeiro";
 import Tarefas from "./pages/Tarefas";
@@ -23,6 +25,8 @@ import logo from "../assets/logo.png";
 const PAGES = [
   { id: "painel", label: "Visão geral", icon: LayoutDashboard, el: Painel },
   { id: "clientes", label: "Clientes", icon: Users, el: Clientes },
+  { id: "prospeccao", label: "Prospecção", icon: Radar, el: Prospeccao },
+  { id: "conteudo", label: "Conteúdo", icon: Clapperboard, el: Conteudo },
   { id: "funil", label: "Funil", icon: SquareKanban, el: Funil },
   { id: "projetos", label: "Projetos", icon: FolderKanban, el: Projetos },
   { id: "financeiro", label: "Financeiro", icon: Wallet, el: Financeiro },
@@ -31,7 +35,7 @@ const PAGES = [
   { id: "perfil", label: "Meu perfil", icon: UserRound, el: Perfil },
 ];
 
-const EMPTY = { equipe: [], perfis: [], clientes: [], negocios: [], projetos: [], lancamentos: [], tarefas: [], notas: [] };
+const EMPTY = { equipe: [], perfis: [], clientes: [], negocios: [], projetos: [], lancamentos: [], tarefas: [], notas: [], prospects: [], abordagens: [], agente: [], conteudos: [] };
 
 function Shell({ children }) {
   return (
