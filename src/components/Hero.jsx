@@ -60,6 +60,15 @@ export default function Hero() {
             <span className="font-display text-[0.65rem] uppercase tracking-[0.42em] text-titanium">
               Creative Tech Agency · Curitiba / BR
             </span>
+            {/* legenda técnica do núcleo 3D (só desktop, onde ele fica à direita) */}
+            <span
+              aria-hidden
+              className="ml-auto hidden items-center gap-3 font-mono text-[0.58rem] uppercase tracking-[0.22em] text-titanium-dim lg:flex"
+            >
+              <span className="text-[#ff2fd0]">Fig. 01</span>
+              <span className="h-px w-6 bg-white/20" />
+              Núcleo Astrovia · 25.4284° S · 49.2733° W
+            </span>
           </motion.div>
 
           {/* TÍTULO BRUTALISTA */}
@@ -111,19 +120,26 @@ export default function Hero() {
                 className="animate-scan absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#22d3ee]/10 to-transparent"
               />
               <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-titanium-dim">
-                Índice de entrega
+                Projetos no ar
               </p>
               <p className="mt-2 font-display text-3xl text-white">
-                98<span className="text-[#22d3ee]">.4</span>
-                <span className="text-base text-titanium">%</span>
+                0<span className="text-[#22d3ee]">5</span>
+                <span className="ml-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-titanium">
+                  / online agora
+                </span>
               </p>
-              <div className="mt-3 h-px w-full bg-white/10">
-                <motion.div
-                  initial={{ scaleX: 0 }}
-                  animate={{ scaleX: 0.984 }}
-                  transition={{ duration: 1.6, delay: 0.9, ease: "easeOut" }}
-                  className="h-px origin-left bg-gradient-to-r from-[#22d3ee] to-[#ff2fd0]"
-                />
+              {/* um segmento por projeto real do portfólio abaixo */}
+              <div className="mt-3 flex gap-1">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <motion.span
+                    key={i}
+                    initial={{ scaleX: 0, opacity: 0 }}
+                    animate={{ scaleX: 1, opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 1 + i * 0.14, ease: "easeOut" }}
+                    className="h-[3px] flex-1 origin-left rounded-full bg-gradient-to-r from-[#22d3ee] to-[#ff2fd0]"
+                    style={{ filter: `hue-rotate(${i * 12}deg)` }}
+                  />
+                ))}
               </div>
             </motion.div>
           </div>
