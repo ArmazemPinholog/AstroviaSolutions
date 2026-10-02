@@ -190,9 +190,20 @@ function App({ session, status }) {
       }
       setLoading(false);
     })();
-    const onFocus = () => load().catch(() => {});
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    // ao voltar para a aba, atualiza os dados em silêncio (no máximo 1x por minuto),
+    // sem desmontar a tela: o que estava aberto continua aberto
+    let ultimo = Date.now();
+    const onVoltar = () => {
+      if (document.visibilityState === "hidden" || Date.now() - ultimo < 60000) return;
+      ultimo = Date.now();
+      load().catch(() => {});
+    };
+    window.addEventListener("focus", onVoltar);
+    document.addEventListener("visibilitychange", onVoltar);
+    return () => {
+      window.removeEventListener("focus", onVoltar);
+      document.removeEventListener("visibilitychange", onVoltar);
+    };
   }, [uid, email, load]);
 
   const go = (id) => {
@@ -310,7 +321,11 @@ export default function GestaoApp() {
   useEffect(() => {
     document.title = "Sala de Gestão · Astrovia";
     sb.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = sb.auth.onAuthStateChange((_e, s) => setSession(s));
+    // o Supabase renova o login sozinho quando a aba volta a ficar visível;
+    // só troca a sessão se for outra pessoa (ou saída), senão a sala inteira recarregava
+    const { data } = sb.auth.onAuthStateChange((_e, s) =>
+      setSession((prev) => (prev && s && prev.user.id === s.user.id ? prev : s))
+    );
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -319,10 +334,11 @@ export default function GestaoApp() {
     setStatus(data || { membro: false, admin: false, ativada: true });
   }, []);
 
+  const sessaoId = session?.user?.id;
   useEffect(() => {
     setStatus(null);
-    if (session) checar();
-  }, [session, checar]);
+    if (sessaoId) checar();
+  }, [sessaoId, checar]);
 
   if (session === undefined || (session && !status)) return <Shell><p className="text-center text-sm text-titanium">Carregando…</p></Shell>;
   if (!session) return <Login />;

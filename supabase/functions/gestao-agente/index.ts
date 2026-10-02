@@ -3,9 +3,11 @@
 //
 // Ações (POST { acao, ... }):
 //   status             → quais chaves estão configuradas
-//   garimpar_google    → busca negócios no Google Maps (Places API New)
+//   garimpar_google    → busca negócios no Google Maps (Places API New), filtrando pelo cliente ideal
 //   garimpar_instagram → hashtag e/ou lista de @ via Graph API (Business Discovery)
+//   investigar         → lê avaliações do Google + site do lead e monta o dossiê (dono, dores, momento quente)
 //   gerar_abordagem    → escreve a mensagem (Gemini grátis; Poe só como reserva)
+//   responder          → o lead respondeu: sugere a próxima mensagem e, se for a hora, a proposta
 //   criar_conteudo     → legenda/roteiro com Gemini + imagem/vídeo com bot de mídia da Poe
 //   gerar_midia        → (re)gera a imagem/vídeo de um conteúdo
 //   publicar           → publica feed/story/reels no Instagram (Graph API)
@@ -13,16 +15,6 @@
 // Segurança: exige login E ser membro da equipe (gestao_membro()).
 // Todas as leituras/escritas usam o token de quem chamou, então as
 // mesmas regras de RLS da sala valem aqui dentro.
-//
-// Secrets (Supabase → Edge Functions → Secrets):
-//   GEMINI_API_KEY        obrigatório para gerar abordagens
-//   GOOGLE_PLACES_KEY     obrigatório para garimpar no Google Maps
-//   IG_ACCESS_TOKEN       token de longa duração (Facebook Login)
-//   IG_USER_ID            id da conta Instagram Business da Astrovia
-//   POE_API_KEY           imagens/vídeos (bots de mídia) e reserva de texto — usa pontos da Poe
-//   POE_MODEL             bot de texto reserva (padrão Claude-Sonnet-4.6)
-//   GEMINI_MODEL          opcional (padrão gemini-2.5-flash)
-//   IG_GRAPH_VERSION      opcional (padrão v25.0)
 // ============================================================
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
@@ -75,6 +67,10 @@ Deno.serve(async (req) => {
         return json(await garimparGoogle(sb, body));
       case "garimpar_instagram":
         return json(await garimparInstagram(sb, body));
+      case "investigar":
+        return json(await investigar(sb, body));
+      case "responder":
+        return json(await responder(sb, body));
       case "gerar_abordagem":
         return json(await gerarAbordagem(sb, body));
       case "criar_conteudo":
@@ -122,9 +118,40 @@ const SITE_FRACO = /(instagram\.com|linktr\.ee|linktree|wa\.me|whatsapp\.com|fac
 const AGENDA_MANUAL = /(agend|marque|marcar|hor[aá]rio|chama no|chame no|whats|direct|dm\b|me chama)/i;
 const AGENDA_ONLINE = /(booksy|trinks|avec|agendor|simplesagenda|appbarber|agendafacil|calendly|gendo|salaovip|belasis)/i;
 
-function pontuar(l: Lead): Lead {
+type Icp = {
+  bairros?: string; avaliacoes_min?: number; avaliacoes_max?: number; nota_min?: number;
+  precos?: string[]; excluir?: string; excluir_redes?: boolean;
+};
+const PRECO: Record<string, string> = {
+  PRICE_LEVEL_INEXPENSIVE: "barato", PRICE_LEVEL_MODERATE: "moderado", PRICE_LEVEL_EXPENSIVE: "caro", PRICE_LEVEL_VERY_EXPENSIVE: "muito caro",
+};
+const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/* devolve o motivo de estar fora do perfil ideal, ou null se serve */
+function foraDoPerfil(l: Lead, icp: Icp, repetidos: Set<string>): string | null {
+  const nome = semAcento(l.nome);
+  const proibidas = listaPalavras(icp.excluir).map(semAcento);
+  const hit = proibidas.find((w) => nome.includes(w));
+  if (hit) return `Nome contém "${hit}"`;
+  if (icp.excluir_redes && repetidos.has(nome)) return "Rede/franquia (várias unidades)";
+  const n = l.avaliacoes ?? null;
+  if (n !== null && icp.avaliacoes_min && n < icp.avaliacoes_min) return `Só ${n} avaliações`;
+  if (n !== null && icp.avaliacoes_max && n > icp.avaliacoes_max) return `${n} avaliações (grande demais)`;
+  if (l.nota_google && icp.nota_min && l.nota_google < icp.nota_min) return `Nota ${l.nota_google}`;
+  const preco = (l.raw as { preco?: string } | undefined)?.preco;
+  if (preco && icp.precos?.length && !icp.precos.includes(preco)) return `Faixa de preço ${PRECO[preco] || preco}`;
+  return null;
+}
+
+function pontuar(l: Lead, icp: Icp = {}): Lead {
   let s = 0;
   const m: string[] = [];
+  const bairros = listaPalavras(icp.bairros).map(semAcento);
+  const end = semAcento(l.endereco || "");
+  const noBairro = bairros.find((b) => end.includes(b));
+  if (noBairro) { s += 10; m.push(`No bairro-alvo (${noBairro})`); }
+  const preco = (l.raw as { preco?: string } | undefined)?.preco;
+  if (preco && icp.precos?.includes(preco)) { s += 6; m.push(`Faixa de preço ${PRECO[preco]}`); }
   const site = (l.site || "").trim();
 
   if (!site) { s += 30; m.push("Não tem site"); }
@@ -181,9 +208,11 @@ async function garimparGoogle(sb: SupabaseClient, b: { busca?: string; cidade?: 
   const campos = [
     "places.id", "places.displayName", "places.formattedAddress", "places.nationalPhoneNumber",
     "places.websiteUri", "places.rating", "places.userRatingCount", "places.googleMapsUri",
-    "places.businessStatus", "places.primaryTypeDisplayName", "nextPageToken",
+    "places.businessStatus", "places.primaryTypeDisplayName", "places.priceLevel", "nextPageToken",
   ].join(",");
 
+  const { data: cfg } = await sb.from("gestao_agente_config").select("prefs").eq("id", "padrao").maybeSingle();
+  const icp: Icp = (cfg?.prefs as { icp?: Icp } | null)?.icp || {};
   const achados: Lead[] = [];
   let pageToken: string | undefined;
   for (let i = 0; i < paginas; i++) {
@@ -204,7 +233,7 @@ async function garimparGoogle(sb: SupabaseClient, b: { busca?: string; cidade?: 
       if (p.businessStatus && p.businessStatus !== "OPERATIONAL") continue;
       const site = p.websiteUri || null;
       const ig = site?.match(/instagram\.com\/([A-Za-z0-9._]+)/i)?.[1] || null;
-      achados.push(pontuar({
+      achados.push(({
         fonte: "google",
         externo_id: p.id,
         nome: p.displayName?.text || "Sem nome",
@@ -217,15 +246,26 @@ async function garimparGoogle(sb: SupabaseClient, b: { busca?: string; cidade?: 
         maps_url: p.googleMapsUri || null,
         nota_google: p.rating ?? null,
         avaliacoes: p.userRatingCount ?? null,
-        raw: { tipo: p.primaryTypeDisplayName?.text || null },
+        raw: { tipo: p.primaryTypeDisplayName?.text || null, preco: p.priceLevel || null },
       }));
     }
     pageToken = d.nextPageToken;
     if (!pageToken) break;
   }
 
-  const r = await salvarNovos(sb, achados);
-  return { encontrados: achados.length, ...r };
+  // nomes que aparecem mais de uma vez na busca = rede/franquia
+  const cont = new Map<string, number>();
+  achados.forEach((l) => { const k = semAcento(l.nome); cont.set(k, (cont.get(k) || 0) + 1); });
+  const repetidos = new Set([...cont].filter(([, n]) => n > 1).map(([k]) => k));
+  const fora: { nome: string; motivo: string }[] = [];
+  const bons = achados.filter((l) => {
+    const motivo = foraDoPerfil(l, icp, repetidos);
+    if (motivo) fora.push({ nome: l.nome, motivo });
+    return !motivo;
+  }).map((l) => pontuar(l, icp));
+
+  const r = await salvarNovos(sb, bons);
+  return { encontrados: achados.length, fora_perfil: fora, ...r };
 }
 
 /* ============================================================
@@ -233,6 +273,8 @@ async function garimparGoogle(sb: SupabaseClient, b: { busca?: string; cidade?: 
    Hashtag não devolve quem postou, então extraímos os @ citados
    nas legendas e enriquecemos cada um via Business Discovery.
    ============================================================ */
+const BLOQUEIO_META = /\(#10\)|\(#200\)|permission|API access blocked|not have permission/i;
+
 async function graph(path: string, params: Record<string, string>) {
   const u = new URL(`${GRAPH()}/${path}`);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
@@ -257,10 +299,16 @@ async function garimparInstagram(
 
   const tag = (b.hashtag || "").trim().replace(/^#/, "").toLowerCase();
   if (tag) {
-    const h = await graph("ig_hashtag_search", { user_id: igUser, q: tag });
-    const hid = h.data?.[0]?.id;
-    if (!hid) throw new Falha(`Hashtag #${tag} não encontrada.`);
-    for (const tipo of ["recent_media", "top_media"]) {
+    let h;
+    try { h = await graph("ig_hashtag_search", { user_id: igUser, q: tag }); }
+    catch (e) {
+      if (!BLOQUEIO_META.test(String((e as Error).message))) throw e;
+      if (!candidatos.size) throw new Falha("A busca por hashtag ainda está bloqueada pela Meta (precisa da aprovação do app). Enquanto isso, cole os @ dos perfis no campo ao lado: o agente salva e você completa o que observar.", 403);
+      h = null;
+    }
+    const hid = h?.data?.[0]?.id;
+    if (h && !hid) throw new Falha(`Hashtag #${tag} não encontrada.`);
+    if (hid) for (const tipo of ["recent_media", "top_media"]) {
       const m = await graph(`${hid}/${tipo}`, { user_id: igUser, fields: "caption,permalink", limit: "50" });
       for (const p of m.data || []) {
         const cap = p.caption || "";
@@ -272,6 +320,7 @@ async function garimparInstagram(
 
   const alvo = [...candidatos].slice(0, 25);
   const achados: Lead[] = [];
+  let bloqueado = false;
   const ignorados: { username: string; motivo: string }[] = [];
   const campos = "username,name,biography,website,followers_count,media_count,profile_picture_url";
 
@@ -293,17 +342,37 @@ async function garimparInstagram(
         raw: { foto: p.profile_picture_url || null, hashtag: tag || null },
       }));
     } catch (e) {
+      if (BLOQUEIO_META.test(String((e as Error).message))) {
+        // sem permissão da Meta para ler o perfil: salva o @ mesmo assim, para não perder o lead
+        achados.push(pontuar({
+          fonte: "instagram", externo_id: username, nome: "@" + username, instagram: username,
+          nicho: b.nicho?.trim() || null, cidade: b.cidade?.trim() || null,
+          raw: { sem_dados: true, hashtag: tag || null },
+        }));
+        bloqueado = true;
+        continue;
+      }
       ignorados.push({ username, motivo: /not.*(business|found)|cannot be found|does not exist/i.test(String(e)) ? "Perfil pessoal ou inexistente" : String((e as Error).message || e) });
     }
   }
 
   const r = await salvarNovos(sb, achados);
-  return { encontrados: achados.length, ignorados, posts, ...r };
+  return { encontrados: achados.length, ignorados, posts, bloqueado, ...r };
 }
 
 /* ============================================================
    ABORDAGEM — Gemini escreve, você revisa e envia
    ============================================================ */
+type Prefs = {
+  tamanho?: "curta" | "media" | "longa";
+  formalidade?: "informal" | "equilibrada" | "formal";
+  emoji?: "nenhum" | "um";
+  criatividade?: "precisa" | "equilibrada" | "criativa";
+  cta?: string; sempre?: string; nunca?: string; exemplos?: string; extra?: string;
+  ofertas_nicho?: { nicho: string; oferta?: string; link?: string }[];
+};
+const listaPalavras = (t?: string) => String(t || "").split(/[\n,;]+/).map((w) => w.trim()).filter((w) => w.length > 1);
+
 function demoPara(nicho: string) {
   const n = nicho.toLowerCase();
   if (/barb/.test(n)) return { nome: "Barber Berserker (sistema de agendamento e gestão para barbearias)", url: `${SITE}/demos/barber-berserker/` };
@@ -324,14 +393,36 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
   ]);
   if (e1 || !p) throw new Falha("Lead não encontrado.", 404);
 
-  const demo = demoPara(p.nicho || "");
+  const prefs = (cfg?.prefs || {}) as Prefs;
+  const nichoLead = (p.nicho || "").toLowerCase();
+  const doNicho = (prefs.ofertas_nicho || []).find((o) => o.nicho && nichoLead.includes(o.nicho.toLowerCase().trim()));
+  const demo = doNicho
+    ? { nome: doNicho.oferta || doNicho.nicho, url: doNicho.link || cfg?.portfolio_url || SITE }
+    : demoPara(p.nicho || "");
   const enviada = (hist || []).find((h) => h.status === "enviada");
-  const limite = canal === "instagram" ? 450 : canal === "whatsapp" ? 600 : 1200;
+  const base = canal === "instagram" ? 450 : canal === "whatsapp" ? 600 : 1200;
+  const limite = Math.round(base * (prefs.tamanho === "curta" ? 0.6 : prefs.tamanho === "longa" ? 1.4 : 1));
 
+  // mensagens que já funcionaram (lead respondeu ou foi para o funil) viram exemplo para a IA
+  const { data: ganhas } = await sb.from("gestao_abordagens")
+    .select("texto, canal, gestao_prospects!inner(status)")
+    .eq("status", "enviada").eq("tipo", "primeiro_contato")
+    .in("gestao_prospects.status", ["respondeu", "no_funil"])
+    .order("criado_em", { ascending: false }).limit(3);
+  const exemplos = [prefs.exemplos?.trim(), ...(ganhas || []).map((g) => g.texto)].filter(Boolean) as string[];
+  const nunca = listaPalavras(prefs.nunca);
+
+  if (/\/demos\//.test(demo.url)) demo.url = `${demo.url}?nome=${encodeURIComponent(p.nome)}`;
+  const dz = p.dossie || {};
   const dados = {
     nome: p.nome, nicho: p.nicho, cidade: p.cidade, instagram: p.instagram, site: p.site,
     nota_google: p.nota_google, avaliacoes_google: p.avaliacoes, seguidores: p.seguidores,
     bio_instagram: p.bio, pontos_observados: p.motivos,
+    ...(p.investigado_em ? {
+      dono_provavel: p.dono && dz.dono_confianca !== "baixa" ? p.dono : null,
+      dores_reais: dz.dores, gancho_sugerido: dz.gancho, diagnostico_site: dz.site_resumo,
+      momento_quente: p.quente ? p.quente_motivo : null,
+    } : {}),
   };
 
   const prompt = `Você escreve mensagens de prospecção para a Astrovia Solutions, agência de tecnologia de Curitiba.
@@ -350,19 +441,37 @@ Canal: ${canal}. Tipo: ${tipo === "followup" ? "follow-up de quem ainda não res
 ${tipo === "followup" && enviada ? `Mensagem enviada antes:\n"""${enviada.texto}"""\n` : ""}
 ${b.instrucao ? `Pedido extra do Christian: ${b.instrucao}\n` : ""}
 REGRAS
-- Português do Brasil, natural, como uma pessoa escreveria. Sem emojis em excesso (no máximo 1).
+- Português do Brasil, natural, como uma pessoa escreveria. ${prefs.emoji === "nenhum" ? "Não use emoji." : "No máximo 1 emoji."}
+- Formalidade: ${prefs.formalidade === "formal" ? "formal e profissional (trate por você, sem gírias)" : prefs.formalidade === "informal" ? "bem informal, como conversa entre conhecidos" : "equilibrada: profissional, mas leve"}.
 - Abra citando algo concreto e verdadeiro do negócio (a partir dos dados). Nunca elogio genérico.
+- Se houver dono_provavel, cumprimente pelo primeiro nome. Se houver gancho_sugerido ou dores_reais, use UMA delas como ponto de partida, com tato: nunca exponha avaliação negativa de cliente nem pareça crítica; fale como oportunidade.
+- A demo foi personalizada com o nome do negócio: quando oferecer, diga que já deixou uma versão com o nome dele.
 - Aponte UMA oportunidade ligada aos pontos observados (ex.: agendamento manual pelo WhatsApp, falta de site).
-- Termine com uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?").
+- Termine com ${prefs.cta?.trim() ? `este tipo de chamada: ${prefs.cta.trim()}` : 'uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?")'}.
+${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
 - ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar a demo." : "Pode incluir o link da demo."}
 - ${tipo === "followup" ? "Follow-up curto (até 250 caracteres), leve, sem cobrar resposta." : `Até ${limite} caracteres.`}
 - Não prometa resultados em números, não fale de preço, não use "Prezado".
 ${canal === "email" ? "- Inclua um assunto curto." : ""}
 
+${exemplos.length ? `\nEXEMPLOS DE MENSAGENS NO ESTILO CERTO (copie o jeito, não o texto; adapte ao lead)\n${exemplos.map((e, i) => `${i + 1}) """${e.slice(0, 700)}"""`).join("\n")}\n` : ""}
 Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa": "..."} (alternativa = segunda versão com outro gancho).`;
 
-  const { dados: out, modelo } = await ia(prompt, b.motor === "gemini" ? "gemini" : "auto", SCHEMA_ABORDAGEM);
+  const temp = prefs.criatividade === "precisa" ? 0.35 : prefs.criatividade === "criativa" ? 0.95 : 0.65;
+  const motor = b.motor === "gemini" ? "gemini" : "auto";
+  let { dados: out, modelo } = await ia(prompt, motor, SCHEMA_ABORDAGEM, temp);
   if (!out.mensagem) throw new Falha("A IA não devolveu mensagem. Tente de novo.", 502);
+
+  // conferência: se escapou palavra proibida ou passou muito do tamanho, pede de novo uma vez
+  const problemas = (t = "") => [
+    ...nunca.filter((w) => t.toLowerCase().includes(w.toLowerCase())).map((w) => `usou "${w}"`),
+    ...(t.length > limite * 1.25 ? [`passou de ${limite} caracteres`] : []),
+  ];
+  const falhas = [...problemas(out.mensagem), ...problemas(out.alternativa)];
+  if (falhas.length) {
+    const nova = await ia(`${prompt}\n\nATENÇÃO: a versão anterior ${[...new Set(falhas)].join(" e ")}. Corrija isso.`, motor, SCHEMA_ABORDAGEM, Math.min(temp, 0.5)).catch(() => null);
+    if (nova?.dados?.mensagem) ({ dados: out, modelo } = nova);
+  }
 
   const monta = (t: string) => (out.assunto && canal === "email" ? `Assunto: ${out.assunto}\n\n${t}` : t);
   const linhas = [out.mensagem, out.alternativa].filter(Boolean).map((t) => ({
@@ -371,6 +480,210 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
   const { data: salvas, error: e2 } = await sb.from("gestao_abordagens").insert(linhas).select();
   if (e2) throw e2;
   return { abordagens: salvas };
+}
+
+/* ============================================================
+   INVESTIGAR — avaliações do Google + diagnóstico do site + IA
+   monta um dossiê: dono provável, dores reais, momento quente
+   ============================================================ */
+async function diagnosticarSite(url: string) {
+  const d: Record<string, unknown> = { url };
+  try {
+    const t0 = Date.now();
+    const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(9000), headers: { "User-Agent": "Mozilla/5.0 (Linux; Android 13) AstroviaBot" } });
+    const html = (await r.text()).slice(0, 400_000);
+    const low = html.toLowerCase();
+    d.ok = r.ok;
+    d.tempo_ms = Date.now() - t0;
+    d.https = r.url.startsWith("https://");
+    d.mobile = /<meta[^>]+name=["']viewport/i.test(html);
+    d.agenda_online = AGENDA_ONLINE.test(low) || /agendar online|agende online|reserve online/.test(low);
+    d.whatsapp = /wa\.me|api\.whatsapp|whatsapp\.com\/send/.test(low);
+    d.instagram = low.match(/instagram\.com\/([a-z0-9._]{2,30})/)?.[1] || null;
+    d.titulo = html.match(/<title[^>]*>([^<]{0,120})/i)?.[1]?.trim() || null;
+    d.plataforma = /wix\.com|wixsite/.test(low) ? "Wix" : /wp-content/.test(low) ? "WordPress" : /squarespace/.test(low) ? "Squarespace" : null;
+    d.texto = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 2500);
+  } catch (e) {
+    d.ok = false;
+    d.erro = /timeout|aborted/i.test(String(e)) ? "Site não abriu em 9 segundos" : "Site fora do ar ou com erro";
+  }
+  try {
+    const ps = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=mobile&category=performance`, { signal: AbortSignal.timeout(45000) });
+    if (ps.ok) {
+      const j = await ps.json();
+      d.nota_celular = Math.round((j?.lighthouseResult?.categories?.performance?.score ?? 0) * 100);
+      d.carrega_em = j?.lighthouseResult?.audits?.["largest-contentful-paint"]?.displayValue || null;
+    }
+  } catch { /* PageSpeed é opcional */ }
+  return d;
+}
+
+const SCHEMA_DOSSIE = {
+  type: "OBJECT",
+  properties: {
+    dono: { type: "STRING" },
+    dono_confianca: { type: "STRING", enum: ["alta", "media", "baixa", "nenhuma"] },
+    dono_evidencia: { type: "STRING" },
+    dores: { type: "ARRAY", items: { type: "OBJECT", properties: { dor: { type: "STRING" }, evidencia: { type: "STRING" } }, required: ["dor", "evidencia"] } },
+    pontos_fortes: { type: "ARRAY", items: { type: "STRING" } },
+    momento_quente: { type: "BOOLEAN" },
+    motivo_quente: { type: "STRING" },
+    site_resumo: { type: "STRING" },
+    gancho: { type: "STRING" },
+    resumo: { type: "STRING" },
+  },
+  required: ["dono_confianca", "dores", "momento_quente", "gancho", "resumo"],
+};
+
+async function investigar(sb: SupabaseClient, b: { prospect_id?: string }) {
+  const { data: p, error } = await sb.from("gestao_prospects").select("*").eq("id", b.prospect_id || "").single();
+  if (error || !p) throw new Falha("Lead não encontrado.", 404);
+  const { data: cfg } = await sb.from("gestao_agente_config").select("*").eq("id", "padrao").maybeSingle();
+  const icp: Icp = (cfg?.prefs as { icp?: Icp } | null)?.icp || {};
+
+  const key = env("GOOGLE_PLACES_KEY");
+  const siteProprio = p.site && !SITE_FRACO.test(p.site) ? p.site : null;
+  const [lugar, site] = await Promise.all([
+    p.fonte === "google" && key && p.externo_id
+      ? fetch(`https://places.googleapis.com/v1/places/${p.externo_id}?languageCode=pt-BR`, {
+          headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "reviews,priceLevel,regularOpeningHours.weekdayDescriptions,editorialSummary" },
+        }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      : Promise.resolve(null),
+    siteProprio ? diagnosticarSite(siteProprio) : Promise.resolve(null),
+  ]);
+
+  const avaliacoes = (lugar?.reviews || []).map((r: { rating?: number; text?: { text?: string }; originalText?: { text?: string }; relativePublishTimeDescription?: string; publishTime?: string }) => ({
+    nota: r.rating, quando: r.relativePublishTimeDescription, data: r.publishTime?.slice(0, 10),
+    texto: (r.text?.text || r.originalText?.text || "").slice(0, 600),
+  }));
+  const recentes = avaliacoes.filter((a: { data?: string }) => a.data && Date.now() - Date.parse(a.data) < 90 * 864e5).length;
+
+  const prompt = `Você é um analista de vendas da Astrovia Solutions (sistemas de agendamento, sites e automações com IA para pequenos negócios).
+Analise este negócio e monte um dossiê para a primeira abordagem. Use SOMENTE os dados abaixo; se algo não aparecer, diga que não há.
+
+NEGÓCIO
+${JSON.stringify({ nome: p.nome, nicho: p.nicho, endereco: p.endereco, nota_google: p.nota_google, total_avaliacoes: p.avaliacoes, instagram: p.instagram, site: p.site, bio: p.bio, faixa_preco: PRECO[lugar?.priceLevel] || null, horarios: lugar?.regularOpeningHours?.weekdayDescriptions || null, resumo_google: lugar?.editorialSummary?.text || null }, null, 2)}
+
+AVALIAÇÕES DO GOOGLE (as mais relevantes; ${recentes} delas dos últimos 90 dias)
+${avaliacoes.length ? avaliacoes.map((a: { nota?: number; quando?: string; texto: string }, i: number) => `${i + 1}) ${a.nota}★ · ${a.quando}: ${a.texto}`).join("\n") : "nenhuma disponível"}
+
+SITE
+${site ? JSON.stringify({ ...site, texto: undefined }, null, 2) + "\nTexto do site: " + (site.texto || "") : p.site ? `Usa link de rede social/WhatsApp como site: ${p.site}` : "Não tem site."}
+
+DEVOLVA
+- dono: primeiro nome do provável dono ou responsável. Pistas: texto do site ("sobre", "fundador"), bio, nome do negócio ("Barbearia do Kaue" → Kaue), ou alguém que várias avaliações citam como dono. Se não houver pista, deixe vazio.
+- dono_confianca: alta (dito explicitamente), media (forte indício), baixa (palpite) ou nenhuma. dono_evidencia: de onde tirou.
+- dores: até 3 problemas reais que a Astrovia resolve (agendamento difícil, demora no WhatsApp, fila/espera, site lento ou ruim no celular, sem agendamento online, sem site...), cada um com a evidência (trecho curto da avaliação ou do diagnóstico). Não invente.
+- pontos_fortes: até 3 coisas que os clientes elogiam (para abrir a conversa com algo verdadeiro).
+- momento_quente: true se houver sinal de que a dor é atual (reclamações recentes de agendamento/atendimento, muitas avaliações recentes = movimento crescendo, site fora do ar, inauguração/nova unidade). motivo_quente: explique em 1 frase.
+- site_resumo: 1 frase sobre o site (ou a falta dele), com o dado mais forte (ex.: "nota 38/100 no celular, carrega em 7,2 s, sem botão de agendar").
+- gancho: UMA frase de abertura, natural e respeitosa, baseada no ponto mais forte do dossiê.
+- resumo: 2 frases para o vendedor.
+Responda em JSON.`;
+
+  const { dados: ia_, modelo } = await ia(prompt, "auto", SCHEMA_DOSSIE, 0.3);
+  const dores = Array.isArray(ia_.dores) ? ia_.dores.slice(0, 3) : [];
+  const temDono = ia_.dono && ia_.dono_confianca && ia_.dono_confianca !== "nenhuma";
+
+  // nota: base + perfil ideal + momento quente + dores comprovadas
+  const base = pontuar({ ...p, raw: { ...(p.raw || {}), preco: lugar?.priceLevel || p.raw?.preco || null } }, icp);
+  const motivos = [...(base.motivos || [])];
+  let score = base.score || 0;
+  if (ia_.momento_quente) { score += 15; motivos.unshift(`🔥 ${ia_.motivo_quente || "Momento quente"}`); }
+  if (dores.length) { score += Math.min(12, dores.length * 4); motivos.push(...dores.map((d: { dor: string }) => `Dor: ${d.dor}`)); }
+  if (site?.nota_celular !== undefined && (site.nota_celular as number) < 50) { score += 6; motivos.push(`Site lento no celular (${site.nota_celular}/100)`); }
+  if (site && site.ok === false) { score += 8; motivos.push(String(site.erro)); }
+  if (site?.agenda_online) { score -= 10; motivos.push("Site já tem agendamento online"); }
+
+  const dossie = {
+    ...ia_, dores, modelo, avaliacoes: avaliacoes.slice(0, 5), avaliacoes_recentes: recentes,
+    site: site ? { ...site, texto: undefined } : null, preco: PRECO[lugar?.priceLevel] || null,
+  };
+  const { data: novo, error: e2 } = await sb.from("gestao_prospects").update({
+    dono: temDono ? String(ia_.dono).trim() : null,
+    quente: !!ia_.momento_quente, quente_motivo: ia_.motivo_quente || null,
+    dossie, investigado_em: new Date().toISOString(),
+    score: Math.max(0, Math.min(100, score)), motivos,
+  }).eq("id", p.id).select().single();
+  if (e2) throw e2;
+  return { prospect: novo };
+}
+
+/* ============================================================
+   ASSISTENTE DE RESPOSTA — o lead respondeu: a IA entende,
+   sugere a próxima mensagem e, se for a hora, monta a proposta
+   ============================================================ */
+const SCHEMA_RESPOSTA = {
+  type: "OBJECT",
+  properties: {
+    intencao: { type: "STRING", enum: ["interessado", "pediu_preco", "objecao", "duvida", "sem_interesse", "outro"] },
+    leitura: { type: "STRING" },
+    proximo_passo: { type: "STRING" },
+    mensagem: { type: "STRING" },
+    alternativa: { type: "STRING" },
+    novo_status: { type: "STRING", enum: ["respondeu", "no_funil", "descartado"] },
+    gerar_proposta: { type: "BOOLEAN" },
+    proposta: {
+      type: "OBJECT",
+      properties: {
+        titulo: { type: "STRING" }, contexto: { type: "STRING" },
+        solucao: { type: "ARRAY", items: { type: "STRING" } },
+        entregaveis: { type: "ARRAY", items: { type: "STRING" } },
+        prazo: { type: "STRING" }, investimento: { type: "STRING" }, condicoes: { type: "STRING" }, proximo_passo: { type: "STRING" },
+      },
+    },
+  },
+  required: ["intencao", "leitura", "proximo_passo", "mensagem", "novo_status", "gerar_proposta"],
+};
+
+async function responder(sb: SupabaseClient, b: { prospect_id?: string; texto?: string; canal?: string; motor?: string }) {
+  const texto = (b.texto || "").trim();
+  if (!texto) throw new Falha("Cole a resposta do lead.");
+  const canal = ["instagram", "whatsapp", "email"].includes(b.canal || "") ? b.canal! : "instagram";
+  const [{ data: p, error }, { data: cfg }, { data: hist }] = await Promise.all([
+    sb.from("gestao_prospects").select("*").eq("id", b.prospect_id || "").single(),
+    sb.from("gestao_agente_config").select("*").eq("id", "padrao").maybeSingle(),
+    sb.from("gestao_abordagens").select("texto, tipo, status, criado_em").eq("prospect_id", b.prospect_id || "").in("status", ["enviada"]).order("criado_em").limit(8),
+  ]);
+  if (error || !p) throw new Falha("Lead não encontrado.", 404);
+  const prefs = (cfg?.prefs || {}) as Prefs & { precos?: string };
+
+  await sb.from("gestao_abordagens").insert({ prospect_id: p.id, canal, tipo: "recebida", texto, status: "enviada", enviada_em: new Date().toISOString() });
+
+  const conversa = [...(hist || []).map((h) => `${h.tipo === "recebida" ? "LEAD" : "ASTROVIA"}: ${h.texto}`), `LEAD (agora): ${texto}`].join("\n\n");
+  const demo = demoPara(p.nicho || "");
+  const prompt = `Você é o vendedor da Astrovia Solutions conversando com um pequeno negócio. Ajude o Christian a responder.
+
+ASTROVIA
+Oferta: ${cfg?.oferta || "sistemas, sites e automações com IA"}
+Tom: ${cfg?.tom || "próximo, direto"} · Assinatura: ${cfg?.assinatura || "Christian · Astrovia Solutions"}
+Tabela de preços e condições (use SOMENTE isto para valores): ${prefs.precos?.trim() || "não informada — nunca invente valores; escreva 'a definir na conversa'"}
+Demo com o nome do lead: ${/\/demos\//.test(demo.url) ? `${demo.url}?nome=${encodeURIComponent(p.nome)}` : demo.url}
+
+LEAD
+${JSON.stringify({ nome: p.nome, nicho: p.nicho, dono: p.dono, cidade: p.cidade, dores: p.dossie?.dores, resumo: p.dossie?.resumo }, null, 2)}
+
+CONVERSA ATÉ AGORA
+${conversa}
+
+TAREFA
+- intencao e leitura: o que o lead quis dizer de verdade (1 frase).
+- proximo_passo: a melhor jogada agora (ex.: marcar call de 15 min, mandar demo, mandar proposta, encerrar com elegância).
+- mensagem e alternativa: duas respostas prontas para o canal ${canal}, curtas, naturais, sem pressão. Objeção de preço: mostre valor e ofereça opção menor/parcelada antes de dar desconto. "Já tenho sistema": pergunte o que mais incomoda no atual. "Sem tempo": proponha algo de 10 minutos.
+${prefs.emoji === "nenhum" ? "- Sem emoji." : "- No máximo 1 emoji."}${listaPalavras(prefs.nunca).length ? `\n- Nunca use: ${listaPalavras(prefs.nunca).join(", ")}.` : ""}
+- novo_status: respondeu (conversa segue), no_funil (quer avançar: proposta/reunião) ou descartado (não quer).
+- gerar_proposta: true só se ele demonstrou interesse real ou pediu preço/proposta. Nesse caso preencha proposta: titulo, contexto (a dor dele em 2 frases), solucao (itens), entregaveis, prazo, investimento (da tabela), condicoes, proximo_passo.
+Responda em JSON.`;
+
+  const { dados: out, modelo } = await ia(prompt, b.motor === "gemini" ? "gemini" : "auto", SCHEMA_RESPOSTA, 0.5);
+  if (!out.mensagem) throw new Falha("A IA não devolveu a resposta. Tente de novo.", 502);
+  await sb.from("gestao_abordagens").insert([out.mensagem, out.alternativa].filter(Boolean).map((t: string) => ({
+    prospect_id: p.id, canal, tipo: "resposta", texto: t.trim(), status: "rascunho", modelo,
+  })));
+  const upd: Record<string, unknown> = { status: p.status === "no_funil" ? "no_funil" : "respondeu" };
+  if (out.gerar_proposta && out.proposta?.titulo) upd.proposta = { ...out.proposta, gerada_em: new Date().toISOString() };
+  await sb.from("gestao_prospects").update(upd).eq("id", p.id);
+  return { intencao: out.intencao, leitura: out.leitura, proximo_passo: out.proximo_passo, sugestao_status: out.novo_status, proposta: upd.proposta || null };
 }
 
 /* ============================================================
@@ -393,14 +706,14 @@ function lerJson(texto: string): Saida {
   return { mensagem: limpo };
 }
 
-async function gemini(prompt: string, schema: unknown): Promise<Saida> {
+async function gemini(prompt: string, schema: unknown, temperature = 0.7): Promise<Saida> {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL()}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": env("GEMINI_API_KEY") },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.8,
+        temperature,
         responseMimeType: "application/json",
         responseSchema: schema,
       },
@@ -439,14 +752,14 @@ async function poe(prompt: string): Promise<Saida> {
   return lerJson(d?.choices?.[0]?.message?.content || "");
 }
 
-async function ia(prompt: string, motor = "auto", schema: unknown = SCHEMA_ABORDAGEM): Promise<{ dados: Saida; modelo: string }> {
+async function ia(prompt: string, motor = "auto", schema: unknown = SCHEMA_ABORDAGEM, temperature = 0.7): Promise<{ dados: Saida; modelo: string }> {
   const temGemini = !!env("GEMINI_API_KEY"), temPoe = !!env("POE_API_KEY");
   if (!temGemini) {
     if (motor === "auto" && temPoe) return { dados: await poe(prompt), modelo: `poe:${POE_MODEL()}` };
     throw new Falha("Configure o secret GEMINI_API_KEY para gerar mensagens.");
   }
   try {
-    return { dados: await gemini(prompt, schema), modelo: GEMINI_MODEL() };
+    return { dados: await gemini(prompt, schema, temperature), modelo: GEMINI_MODEL() };
   } catch (e) {
     const podeReserva = motor === "auto" && temPoe && (!(e instanceof Falha) || (e as { reserva?: boolean }).reserva);
     if (!podeReserva) throw e;

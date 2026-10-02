@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Radar, Sparkles, Copy, Send, AtSign, MapPin, Globe, MessageCircle, Settings2, UserPlus, Ban, Check,
-  Star, Hash, Search, Plus, Clock, Loader2, ExternalLink, Trash2,
+  Star, Hash, Search, Plus, Clock, Loader2, ExternalLink, Trash2, Flame, ScanSearch, Reply, FileText, Link2,
 } from "lucide-react";
 import {
   useG, Card, Btn, Field, Input, Textarea, Select, Badge, Modal, Empty, PageHead, Stat,
@@ -94,6 +94,7 @@ export default function Prospeccao() {
             </button>
           ))}
         </div>
+        <InvestigarLote leads={lista} />
         <div className="relative ml-auto w-full sm:w-64">
           <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-titanium" />
           <Input placeholder="Buscar lead…" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 34 }} />
@@ -186,7 +187,7 @@ function Garimpar({ cfg, chaves }) {
           </>
         ) : (
           <>
-            <Field label="Hashtag" hint="Limite do Instagram: 30 hashtags diferentes por semana">
+            <Field label="Hashtag" hint="Bloqueada até a Meta aprovar o app; use os @ ao lado">
               <div className="relative">
                 <Hash size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-titanium" />
                 <Input value={f.hashtag} onChange={set("hashtag")} placeholder="barbeariacuritiba" style={{ paddingLeft: 30 }} />
@@ -219,6 +220,15 @@ function Garimpar({ cfg, chaves }) {
             <p className="mt-1 text-xs text-titanium">
               Melhores: {[...res.novos].sort((a, b) => b.score - a.score).slice(0, 4).map((n) => `${n.nome} (${n.score})`).join(" · ")}
             </p>
+          )}
+          {res.fora_perfil?.length > 0 && (
+            <details className="mt-1 text-xs">
+              <summary className="cursor-pointer text-titanium">{res.fora_perfil.length} fora do seu cliente ideal (não salvos)</summary>
+              <ul className="mt-1 flex flex-col gap-0.5 text-titanium-dim">{res.fora_perfil.map((f) => <li key={f.nome + f.motivo}>{f.nome} · {f.motivo}</li>)}</ul>
+            </details>
+          )}
+          {res.bloqueado && (
+            <p className="mt-1 text-xs text-[#fbbf24]">A Meta ainda não liberou a leitura de perfis: os @ foram salvos sem seguidores e bio. Abra cada lead e anote o que observar; a IA usa isso na mensagem.</p>
           )}
           {res.ignorados?.length > 0 && (
             <p className="mt-1 text-xs text-titanium">Ignorados (perfil pessoal ou inexistente): {res.ignorados.map((i) => "@" + i.username).join(", ")}</p>
@@ -276,6 +286,9 @@ function LeadLinha({ p, dias, onOpen }) {
           <p className="truncate text-sm text-white">{p.nome}</p>
           <Badge color={st?.color}>{st?.label}</Badge>
           {followupVencido(p, dias) && <Badge color="#fbbf24"><Clock size={10} /> follow-up</Badge>}
+          {p.quente && <Badge color="#ff6b3d"><Flame size={10} /> quente</Badge>}
+          {p.dono && <span className="text-xs text-titanium">· {p.dono}</span>}
+          {!p.investigado_em && p.fonte === "google" && <span className="text-[0.65rem] text-titanium-dim">não investigado</span>}
         </div>
         <p className="mt-0.5 truncate text-xs text-titanium">
           {[FONTES[p.fonte], p.nicho, p.cidade, p.instagram && "@" + p.instagram, p.nota_google && `${p.nota_google}★ (${p.avaliacoes})`, p.seguidores && `${p.seguidores.toLocaleString("pt-BR")} seguidores`].filter(Boolean).join(" · ")}
@@ -288,12 +301,185 @@ function LeadLinha({ p, dias, onOpen }) {
   );
 }
 
+/* ---------- o que se sabe do lead (bio do perfil ou anotação sua) ---------- */
+function Observacao({ p }) {
+  const { load } = useG();
+  const [t, setT] = useState(p.bio || "");
+  const [ok, setOk] = useState(false);
+  const salvar = async () => {
+    if ((p.bio || "") === t) return;
+    const { error } = await sb.from("gestao_prospects").update({ bio: t.trim() || null }).eq("id", p.id);
+    if (!error) { setOk(true); setTimeout(() => setOk(false), 1500); load(); }
+  };
+  return (
+    <Field className="mt-3" label={p.raw?.sem_dados ? "O que você observou no perfil" : "Bio / o que você observou"}
+      hint={ok ? "Salvo ✓" : "A IA usa isso para personalizar a mensagem. Salva ao sair do campo."}>
+      <Textarea rows={3} value={t} onChange={(e) => setT(e.target.value)} onBlur={salvar}
+        placeholder="Ex.: agenda só pelo Direct, posta cortes todo dia, 2 unidades no Batel" />
+    </Field>
+  );
+}
+
+/* ---------- investigar vários de uma vez ---------- */
+function InvestigarLote({ leads }) {
+  const { load } = useG();
+  const [prog, setProg] = useState(null);
+  const alvo = leads.filter((p) => !p.investigado_em && ["novo", "abordado"].includes(p.status)).slice(0, 5);
+  if (!alvo.length && !prog) return null;
+  const rodar = async () => {
+    for (let i = 0; i < alvo.length; i++) {
+      setProg(`${i + 1}/${alvo.length}`);
+      try { await agente("investigar", { prospect_id: alvo[i].id }); } catch { /* segue para o próximo */ }
+    }
+    setProg(null);
+    await load();
+  };
+  return (
+    <Btn variant="ghost" size="sm" disabled={!!prog} onClick={rodar} title="Lê as avaliações e o site e monta o dossiê dos melhores leads desta aba">
+      {prog ? <><Loader2 size={13} className="animate-spin" /> Investigando {prog}…</> : <><ScanSearch size={13} /> Investigar os {alvo.length} melhores</>}
+    </Btn>
+  );
+}
+
+/* ---------- dossiê: avaliações, site, dono, momento quente ---------- */
+function Dossie({ p }) {
+  const { load } = useG();
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState("");
+  const d = p.dossie;
+  const rodar = async () => {
+    setBusy(true); setErro("");
+    try { await agente("investigar", { prospect_id: p.id }); await load(); } catch (e) { setErro(e.message); }
+    setBusy(false);
+  };
+  const s = d?.site;
+  const checks = s && [
+    s.ok === false ? [false, s.erro] : null,
+    s.nota_celular !== undefined && [s.nota_celular >= 50, `Celular: ${s.nota_celular}/100${s.carrega_em ? ` · carrega em ${s.carrega_em}` : ""}`],
+    s.ok !== false && [s.https, s.https ? "Seguro (https)" : "Sem https"],
+    s.ok !== false && [s.mobile, s.mobile ? "Adaptado ao celular" : "Não adaptado ao celular"],
+    s.ok !== false && [s.agenda_online, s.agenda_online ? "Tem agendamento online" : "Sem agendamento online"],
+    s.ok !== false && [s.whatsapp, s.whatsapp ? "Tem botão de WhatsApp" : "Sem botão de WhatsApp"],
+    s.plataforma && [true, `Feito em ${s.plataforma}`],
+  ].filter(Boolean);
+  return (
+    <div className="mt-4 rounded-xl border border-[#22d3ee]/15 bg-[#22d3ee]/[0.03] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[#22d3ee]">Dossiê</p>
+        <Btn size="sm" variant="ghost" disabled={busy} onClick={rodar}>
+          {busy ? <><Loader2 size={12} className="animate-spin" /> Lendo avaliações e site…</> : <><ScanSearch size={12} /> {d ? "Atualizar" : "Investigar"}</>}
+        </Btn>
+      </div>
+      {erro && <p className="mt-2 text-xs text-[#ff9be9]">{erro}</p>}
+      {!d && !busy && <p className="mt-2 text-xs text-titanium">O agente lê as avaliações do Google e abre o site para achar o dono, as dores reais e se é um momento quente. Leva uns 30 segundos.</p>}
+      {d && (
+        <div className="mt-2 flex flex-col gap-3 text-xs">
+          {p.quente && <p className="flex gap-1.5 rounded-lg bg-[#ff6b3d]/10 p-2 text-[#ffb59c]"><Flame size={13} className="shrink-0" /> {p.quente_motivo}</p>}
+          {d.resumo && <p className="text-titanium-bright">{d.resumo}</p>}
+          {p.dono && <p><span className="text-titanium">Dono provável: </span><b className="text-white">{p.dono}</b> <span className="text-titanium-dim">({d.dono_confianca}{d.dono_evidencia ? ` · ${d.dono_evidencia}` : ""})</span></p>}
+          {d.gancho && <p className="rounded-lg border border-white/[0.06] p-2 italic text-titanium-bright">“{d.gancho}”</p>}
+          {d.dores?.length > 0 && (
+            <div><p className="text-titanium">Dores com evidência</p>
+              <ul className="mt-1 flex flex-col gap-1">{d.dores.map((x) => <li key={x.dor}><b className="text-white">{x.dor}</b> <span className="text-titanium-dim">— {x.evidencia}</span></li>)}</ul></div>
+          )}
+          {d.pontos_fortes?.length > 0 && <p><span className="text-titanium">Clientes elogiam: </span><span className="text-titanium-bright">{d.pontos_fortes.join(" · ")}</span></p>}
+          {checks?.length > 0 && (
+            <div><p className="text-titanium">Site</p>
+              <ul className="mt-1 grid gap-0.5 sm:grid-cols-2">{checks.map(([ok, t]) => <li key={t} className={ok ? "text-[#34d399]" : "text-[#fbbf24]"}>{ok ? "✓" : "✗"} {t}</li>)}</ul></div>
+          )}
+          <p className="text-titanium-dim">{d.avaliacoes?.length || 0} avaliações lidas ({d.avaliacoes_recentes || 0} recentes) · {fmtDate(p.investigado_em?.slice(0, 10))}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* link da demo com o nome do lead */
+const demoUrl = (p) => {
+  const n = (p.nicho || "").toLowerCase();
+  const slug = /barb/.test(n) ? "barber-berserker" : /est[eé]t|beleza|sal[aã]o|sobrancelha|unha|spa|cl[ií]nica/.test(n) ? "luxe" : null;
+  return slug ? `${location.origin}/demos/${slug}/?nome=${encodeURIComponent(p.nome)}` : null;
+};
+function DemoLink({ p }) {
+  const [ok, setOk] = useState(false);
+  const url = demoUrl(p);
+  if (!url) return null;
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Btn size="sm" variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(url); setOk(true); setTimeout(() => setOk(false), 1600); } catch { /* sem clipboard */ } }}>
+        <Link2 size={12} /> {ok ? "Link copiado!" : "Copiar demo com o nome dele"}
+      </Btn>
+      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[#22d3ee] hover:underline"><ExternalLink size={12} /> ver demo</a>
+    </div>
+  );
+}
+
+/* ---------- o lead respondeu: assistente ---------- */
+const INTENCAO = { interessado: ["Interessado", "#34d399"], pediu_preco: ["Pediu preço", "#fbbf24"], objecao: ["Objeção", "#ff9be9"], duvida: ["Dúvida", "#60a5fa"], sem_interesse: ["Sem interesse", "#8a8f98"], outro: ["Outro", "#8a8f98"] };
+function Respondeu({ p, canal, motor }) {
+  const { load } = useG();
+  const [txt, setTxt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const [erro, setErro] = useState("");
+  const rodar = async () => {
+    setBusy(true); setErro("");
+    try { const r = await agente("responder", { prospect_id: p.id, texto: txt, canal, motor }); setRes(r); setTxt(""); await load(); } catch (e) { setErro(e.message); }
+    setBusy(false);
+  };
+  const aplicar = async (s) => { await sb.from("gestao_prospects").update({ status: s }).eq("id", p.id); await load(); setRes({ ...res, sugestao_status: null }); };
+  const [rot, cor] = INTENCAO[res?.intencao] || [];
+  return (
+    <div className="rounded-xl border border-[#fbbf24]/20 bg-[#fbbf24]/[0.03] p-3">
+      <p className="flex items-center gap-1.5 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[#fbbf24]"><Reply size={12} /> Ele respondeu?</p>
+      <div className="mt-2"><Textarea rows={3} value={txt} onChange={(e) => setTxt(e.target.value)} placeholder="Cole aqui a resposta do lead" /></div>
+      <Btn size="sm" className="mt-2" disabled={busy || !txt.trim()} onClick={rodar}>
+        {busy ? <><Loader2 size={12} className="animate-spin" /> Pensando…</> : <><Sparkles size={12} /> Sugerir resposta</>}
+      </Btn>
+      {erro && <p className="mt-2 text-xs text-[#ff9be9]">{erro}</p>}
+      {res && (
+        <div className="mt-3 flex flex-col gap-1.5 text-xs">
+          <p className="flex flex-wrap items-center gap-2">{rot && <Badge color={cor}>{rot}</Badge>}<span className="text-titanium-bright">{res.leitura}</span></p>
+          <p><span className="text-titanium">Próximo passo: </span><span className="text-white">{res.proximo_passo}</span></p>
+          {res.sugestao_status && res.sugestao_status !== p.status && (
+            <Btn size="sm" variant="ghost" className="self-start" onClick={() => aplicar(res.sugestao_status)}>
+              Mover para "{STATUS_LEAD.find((s) => s.id === res.sugestao_status)?.label || res.sugestao_status}"
+            </Btn>
+          )}
+          <p className="text-titanium-dim">As respostas sugeridas estão logo abaixo, junto com as mensagens.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Proposta({ p }) {
+  const [ok, setOk] = useState(false);
+  const x = p.proposta;
+  if (!x?.titulo) return null;
+  const lista = (t, arr) => (arr?.length ? `${t}\n${arr.map((i) => `• ${i}`).join("\n")}\n\n` : "");
+  const texto = `${x.titulo}\n\n${x.contexto ? x.contexto + "\n\n" : ""}${lista("O que vamos fazer", x.solucao)}${lista("O que você recebe", x.entregaveis)}${x.prazo ? `Prazo: ${x.prazo}\n` : ""}${x.investimento ? `Investimento: ${x.investimento}\n` : ""}${x.condicoes ? `Condições: ${x.condicoes}\n` : ""}${x.proximo_passo ? `\nPróximo passo: ${x.proximo_passo}` : ""}`;
+  return (
+    <div className="rounded-xl border border-[#34d399]/25 bg-[#34d399]/[0.04] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 font-mono text-[0.6rem] uppercase tracking-[0.18em] text-[#34d399]"><FileText size={12} /> Proposta sugerida</p>
+        <Btn size="sm" variant="ghost" onClick={async () => { try { await navigator.clipboard.writeText(texto); setOk(true); setTimeout(() => setOk(false), 1600); } catch { /* sem clipboard */ } }}>
+          <Copy size={12} /> {ok ? "Copiada!" : "Copiar"}
+        </Btn>
+      </div>
+      <pre className="mt-2 whitespace-pre-wrap font-sans text-xs text-titanium-bright">{texto}</pre>
+      <p className="mt-2 text-[0.65rem] text-titanium-dim">Revise os valores antes de enviar. Os preços vêm da aba "Preços" da configuração do agente.</p>
+    </div>
+  );
+}
+
 /* ---------- lead aberto: abordagem ---------- */
 function LeadModal({ id, onClose, chaves }) {
   const { db, load, uid } = useG();
   const cfg = db.agente?.[0] || {};
   const p = (db.prospects || []).find((x) => x.id === id);
   const msgs = (db.abordagens || []).filter((a) => a.prospect_id === id && a.status !== "descartada");
+  const conversou = msgs.some((a) => a.status === "enviada" && a.tipo !== "recebida");
   const temIg = !!p?.instagram, temWa = !!(p?.telefone && waLink(p.telefone));
   const [canal, setCanal] = useState(temIg ? "instagram" : temWa ? "whatsapp" : "instagram");
   const [instrucao, setInstrucao] = useState("");
@@ -332,7 +518,7 @@ function LeadModal({ id, onClose, chaves }) {
       const agora = new Date().toISOString();
       await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora }).eq("id", a.id);
       await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho").neq("id", a.id);
-      await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
+      if (a.tipo !== "resposta") await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
       await sb.from("gestao_tarefas").insert({
         titulo: `Follow-up: ${p.nome}`,
         descricao: `Abordado por ${a.canal} em ${fmtDate(today())}. Se não respondeu, gere o follow-up na aba Prospecção.`,
@@ -417,7 +603,9 @@ function LeadModal({ id, onClose, chaves }) {
               <React.Fragment key={k}><dt className="text-titanium">{k}</dt><dd className="break-words text-white">{v}</dd></React.Fragment>
             ))}
           </dl>
-          {p.bio && <p className="mt-3 whitespace-pre-line rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-titanium-bright">{p.bio}</p>}
+          <Observacao p={p} />
+          {(p.fonte === "google" || p.site) && <Dossie p={p} />}
+          <DemoLink p={p} />
           {p.motivos?.length > 0 && (
             <div className="mt-4">
               <p className="font-mono text-[0.6rem] uppercase tracking-[0.18em] text-titanium">Por que essa nota</p>
@@ -456,7 +644,14 @@ function LeadModal({ id, onClose, chaves }) {
           {chaves?.gemini === false && <p className="mt-2 text-xs text-[#fbbf24]">Falta a chave GEMINI_API_KEY nos Secrets do Supabase.</p>}
 
           <div className="mt-4 flex flex-col gap-3">
-            {msgs.map((a) => (
+            {(conversou || p.status === "respondeu") && <Respondeu p={p} canal={canal} motor={motor} />}
+            <Proposta p={p} />
+            {msgs.map((a) => a.tipo === "recebida" ? (
+              <div key={a.id} className="mr-8 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-xs text-titanium-bright">
+                <p className="mb-1 font-mono text-[0.55rem] uppercase tracking-[0.18em] text-titanium">{p.dono || p.nome} respondeu · {fmtDate(a.criado_em?.slice(0, 10))}</p>
+                <p className="whitespace-pre-line">{a.texto}</p>
+              </div>
+            ) : (
               <Rascunho key={a.id} a={a} copiado={copiado === a.id} busy={busy}
                 onCopiar={() => copiar(a)} onAbrir={() => abrirCanal(a)} onEnviada={() => enviada(a)}
                 podeAbrir={a.canal === "instagram" ? temIg : a.canal === "whatsapp" ? temWa : false} />
@@ -481,6 +676,7 @@ function Rascunho({ a, copiado, busy, onCopiar, onAbrir, onEnviada, podeAbrir })
         <Badge color={enviadaJa ? "#34d399" : "#8a8f98"}>{enviadaJa ? `enviada ${fmtDate(a.enviada_em?.slice(0, 10))}` : "rascunho"}</Badge>
         <Badge color="#60a5fa">{a.canal}</Badge>
         {a.tipo === "followup" && <Badge color="#fbbf24">follow-up</Badge>}
+        {a.tipo === "resposta" && <Badge color="#34d399">resposta</Badge>}
         {a.modelo && <Badge color={a.modelo.startsWith("poe") ? "#a78bfa" : "#8a8f98"}>{a.modelo.replace(/^poe:/, "Poe · ")}</Badge>}
         <span className="ml-auto font-mono text-[0.6rem] text-titanium">{txt.length} caracteres</span>
       </div>
@@ -500,33 +696,141 @@ function Rascunho({ a, copiado, busy, onCopiar, onAbrir, onEnviada, podeAbrir })
 }
 
 /* ---------- configuração do agente ---------- */
+const OPC = {
+  tamanho: [{ value: "curta", label: "Curta (direto ao ponto)" }, { value: "media", label: "Média" }, { value: "longa", label: "Mais completa" }],
+  formalidade: [{ value: "informal", label: "Informal" }, { value: "equilibrada", label: "Equilibrada" }, { value: "formal", label: "Formal" }],
+  emoji: [{ value: "um", label: "No máximo 1" }, { value: "nenhum", label: "Nenhum" }],
+  criatividade: [
+    { value: "precisa", label: "Precisa: segue as regras à risca" },
+    { value: "equilibrada", label: "Equilibrada" },
+    { value: "criativa", label: "Criativa: mais variação" },
+  ],
+};
+
 function ConfigModal({ cfg, onClose }) {
   const { save } = useG();
+  const p0 = cfg.prefs || {};
   const [f, setF] = useState({ ...cfg, nichos: (cfg.nichos || []).join(", ") });
+  const [p, setP] = useState({
+    tamanho: "media", formalidade: "equilibrada", emoji: "um", criatividade: "equilibrada",
+    cta: "", sempre: "", nunca: "", exemplos: "", extra: "", ...p0,
+  });
+  const [ofertas, setOfertas] = useState(p0.ofertas_nicho?.length ? p0.ofertas_nicho : [{ nicho: "", oferta: "", link: "" }]);
+  const [icp, setIcp] = useState({ bairros: "", avaliacoes_min: "", avaliacoes_max: "", nota_min: "", precos: [], excluir: "", excluir_redes: true, ...(p0.icp || {}) });
+  const seti = (k) => (e) => setIcp({ ...icp, [k]: e.target.value });
+  const [aba, setAba] = useState("icp");
   const [erro, setErro] = useState("");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const setp = (k) => (e) => setP({ ...p, [k]: e.target.value });
+  const setOf = (i, k, v) => setOfertas(ofertas.map((o, j) => (j === i ? { ...o, [k]: v } : o)));
+
   const salvar = async () => {
     try {
       await save("agente", {
         id: "padrao", oferta: f.oferta, tom: f.tom, assinatura: f.assinatura, portfolio_url: f.portfolio_url,
         cidade_padrao: f.cidade_padrao, followup_dias: +f.followup_dias || 3,
         nichos: String(f.nichos || "").split(",").map((s) => s.trim()).filter(Boolean),
+        prefs: {
+          ...p, ofertas_nicho: ofertas.filter((o) => o.nicho.trim()),
+          icp: { ...icp, avaliacoes_min: +icp.avaliacoes_min || null, avaliacoes_max: +icp.avaliacoes_max || null, nota_min: +icp.nota_min || null },
+        },
       });
       onClose();
     } catch (e) { setErro(e.message); }
   };
+
+  const abas = [{ id: "icp", label: "Cliente ideal" }, { id: "ia", label: "Como a IA escreve" }, { id: "ofertas", label: "Oferta por nicho" }, { id: "precos", label: "Preços" }, { id: "marca", label: "Astrovia" }];
+  const FAIXAS = [["PRICE_LEVEL_INEXPENSIVE", "Barato"], ["PRICE_LEVEL_MODERATE", "Moderado"], ["PRICE_LEVEL_EXPENSIVE", "Caro"], ["PRICE_LEVEL_VERY_EXPENSIVE", "Muito caro"]];
   return (
     <Modal open onClose={onClose} title="Configurar o agente"
       footer={<>{erro && <span className="text-sm text-[#ff9be9]">{erro}</span>}<Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn variant="neon" onClick={salvar}>Salvar</Btn></>}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="O que a Astrovia oferece" className="sm:col-span-2" hint="A IA usa isso como base para toda mensagem"><Textarea rows={3} value={f.oferta} onChange={set("oferta")} /></Field>
-        <Field label="Tom de voz" className="sm:col-span-2"><Textarea rows={2} value={f.tom} onChange={set("tom")} /></Field>
-        <Field label="Assinatura"><Input value={f.assinatura} onChange={set("assinatura")} /></Field>
-        <Field label="Link do portfólio"><Input value={f.portfolio_url} onChange={set("portfolio_url")} /></Field>
-        <Field label="Nichos-alvo" hint="Separados por vírgula" className="sm:col-span-2"><Input value={f.nichos} onChange={set("nichos")} /></Field>
-        <Field label="Cidade padrão"><Input value={f.cidade_padrao} onChange={set("cidade_padrao")} /></Field>
-        <Field label="Follow-up depois de (dias)"><Input type="number" min="1" max="30" value={f.followup_dias} onChange={set("followup_dias")} /></Field>
+      <div className="mb-4 flex flex-wrap gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1">
+        {abas.map((a) => (
+          <button key={a.id} onClick={() => setAba(a.id)}
+            className={`rounded-lg px-3 py-1.5 text-xs transition ${aba === a.id ? "bg-[#22d3ee]/15 text-[#22d3ee]" : "text-titanium hover:text-white"}`}>{a.label}</button>
+        ))}
       </div>
+
+      {aba === "icp" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <p className="text-sm text-titanium sm:col-span-2">O garimpo do Google só salva quem se encaixa aqui, e quem está no bairro e na faixa de preço certos ganha nota maior.</p>
+          <Field label="Bairros-alvo" className="sm:col-span-2" hint="Separe por vírgula. Ex.: Batel, Água Verde, Bigorrilho"><Input value={icp.bairros} onChange={seti("bairros")} /></Field>
+          <Field label="Mínimo de avaliações" hint="Negócio já estabelecido"><Input type="number" min="0" value={icp.avaliacoes_min || ""} onChange={seti("avaliacoes_min")} placeholder="30" /></Field>
+          <Field label="Máximo de avaliações" hint="Acima disso costuma ser rede grande"><Input type="number" min="0" value={icp.avaliacoes_max || ""} onChange={seti("avaliacoes_max")} placeholder="800" /></Field>
+          <Field label="Nota mínima no Google"><Input type="number" min="0" max="5" step="0.1" value={icp.nota_min || ""} onChange={seti("nota_min")} placeholder="4.2" /></Field>
+          <Field label="Faixa de preço aceita" hint="Vazio = todas">
+            <div className="flex flex-wrap gap-1.5">
+              {FAIXAS.map(([v, l]) => {
+                const on = icp.precos?.includes(v);
+                return <button key={v} type="button" onClick={() => setIcp({ ...icp, precos: on ? icp.precos.filter((x) => x !== v) : [...(icp.precos || []), v] })}
+                  className={`rounded-lg border px-2.5 py-1 text-xs ${on ? "border-[#22d3ee]/50 bg-[#22d3ee]/15 text-[#22d3ee]" : "border-white/10 text-titanium"}`}>{l}</button>;
+              })}
+            </div>
+          </Field>
+          <Field label="Excluir nomes que contenham" className="sm:col-span-2" hint="Ex.: franquias e concorrentes. Separe por vírgula."><Input value={icp.excluir} onChange={seti("excluir")} placeholder="Barbearia Corleone, Espaço Laser, Sobrancelhas Design" /></Field>
+          <label className="flex items-center gap-2 text-sm text-titanium-bright sm:col-span-2">
+            <input type="checkbox" checked={!!icp.excluir_redes} onChange={(e) => setIcp({ ...icp, excluir_redes: e.target.checked })} />
+            Ignorar redes e franquias (mesmo nome em várias unidades)
+          </label>
+        </div>
+      )}
+
+      {aba === "precos" && (
+        <Field label="Tabela de preços e condições" hint="O assistente usa só isto para montar propostas. Sem tabela, ele escreve 'a definir'.">
+          <Textarea rows={9} value={p.precos || ""} onChange={setp("precos")}
+            placeholder={"Sistema de agendamento: implantação R$ ___ + R$ ___/mês\nSite profissional: a partir de R$ ___\nAutomação com IA: a partir de R$ ___\nCondições: 50% na entrada, 50% na entrega; parcelamos em até ___x"} />
+        </Field>
+      )}
+
+      {aba === "ia" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Tamanho da mensagem"><Select value={p.tamanho} onChange={setp("tamanho")} options={OPC.tamanho} /></Field>
+          <Field label="Formalidade"><Select value={p.formalidade} onChange={setp("formalidade")} options={OPC.formalidade} /></Field>
+          <Field label="Emoji"><Select value={p.emoji} onChange={setp("emoji")} options={OPC.emoji} /></Field>
+          <Field label="Precisão" hint="Precisa = respostas mais parecidas e fiéis às regras"><Select value={p.criatividade} onChange={setp("criatividade")} options={OPC.criatividade} /></Field>
+          <Field label="Como terminar a mensagem" className="sm:col-span-2" hint='Ex.: "perguntar se pode mandar um vídeo de 1 minuto da demo"'>
+            <Input value={p.cta} onChange={setp("cta")} placeholder="pergunta simples, sem compromisso" />
+          </Field>
+          <Field label="Sempre fazer" className="sm:col-span-2" hint="Ex.: chamar pelo nome do negócio; citar que somos de Curitiba">
+            <Textarea rows={2} value={p.sempre} onChange={setp("sempre")} />
+          </Field>
+          <Field label="Palavras e frases proibidas" className="sm:col-span-2" hint="Separe por vírgula. Se escapar alguma, o agente reescreve sozinho.">
+            <Textarea rows={2} value={p.nunca} onChange={setp("nunca")} placeholder="prezado, oportunidade imperdível, alavancar, solução completa" />
+          </Field>
+          <Field label="Exemplos de mensagens no seu estilo" className="sm:col-span-2"
+            hint="Cole 1 a 3 mensagens que você mandaria. É o que mais deixa a IA precisa. As que tiverem resposta entram como exemplo automaticamente.">
+            <Textarea rows={5} value={p.exemplos} onChange={setp("exemplos")} />
+          </Field>
+          <Field label="Outras instruções" className="sm:col-span-2"><Textarea rows={2} value={p.extra} onChange={setp("extra")} /></Field>
+        </div>
+      )}
+
+      {aba === "ofertas" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-titanium">Para cada nicho, o que oferecer e qual link mostrar. Se o nicho do lead contiver a palavra, a IA usa esta oferta.</p>
+          {ofertas.map((o, i) => (
+            <div key={i} className="grid gap-2 rounded-xl border border-white/[0.06] p-3 sm:grid-cols-[1fr_2fr_1.4fr_auto]">
+              <Input placeholder="nicho (ex.: barbearia)" value={o.nicho} onChange={(e) => setOf(i, "nicho", e.target.value)} />
+              <Input placeholder="o que oferecer" value={o.oferta || ""} onChange={(e) => setOf(i, "oferta", e.target.value)} />
+              <Input placeholder="link da demo" value={o.link || ""} onChange={(e) => setOf(i, "link", e.target.value)} />
+              <Btn variant="ghost" size="sm" onClick={() => setOfertas(ofertas.filter((_, j) => j !== i))} aria-label="Remover"><Trash2 size={13} /></Btn>
+            </div>
+          ))}
+          <Btn variant="ghost" size="sm" className="self-start" onClick={() => setOfertas([...ofertas, { nicho: "", oferta: "", link: "" }])}><Plus size={13} /> Nicho</Btn>
+        </div>
+      )}
+
+      {aba === "marca" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="O que a Astrovia oferece" className="sm:col-span-2" hint="A IA usa isso como base para toda mensagem"><Textarea rows={3} value={f.oferta} onChange={set("oferta")} /></Field>
+          <Field label="Tom de voz" className="sm:col-span-2"><Textarea rows={2} value={f.tom} onChange={set("tom")} /></Field>
+          <Field label="Assinatura"><Input value={f.assinatura} onChange={set("assinatura")} /></Field>
+          <Field label="Link do portfólio"><Input value={f.portfolio_url} onChange={set("portfolio_url")} /></Field>
+          <Field label="Nichos-alvo" hint="Separados por vírgula" className="sm:col-span-2"><Input value={f.nichos} onChange={set("nichos")} /></Field>
+          <Field label="Cidade padrão"><Input value={f.cidade_padrao} onChange={set("cidade_padrao")} /></Field>
+          <Field label="Follow-up depois de (dias)"><Input type="number" min="1" max="30" value={f.followup_dias} onChange={set("followup_dias")} /></Field>
+        </div>
+      )}
     </Modal>
   );
 }
