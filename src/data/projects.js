@@ -83,6 +83,23 @@ const LIST = [
     desc: "Sistema white-label para barbearias: agendamento 24/7 em 3 cliques, caixa com comissão automática, fidelidade Runas, clube de assinatura, modo TV da recepção e relatórios. Teste à vontade — cada visitante tem a própria demo.",
     tags: ["React", "Supabase", "White-label", "Agendamento"],
   },
+  {
+    id: "tecnomotos",
+    chip: "Demo interativa",
+    n: "05",
+    title: "TECNOMOTOS",
+    kicker: "Oficina de motos · Gestão & ordens de serviço",
+    // demo estática (dados fictícios) dentro do site: public/demos/tecnomotos
+    url: "/demos/tecnomotos/index.html",
+    domain: "tecnomotos · demo interativa",
+    live: true,
+    demo: true,
+    badge: "demo interativa",
+    hint: "Abra uma ordem de serviço, lance itens e dê um desconto em R$ ou %. O Painel usa o PIN 1234.",
+    accent: "#F5B301",
+    desc: "Sistema para oficina de motos com loja de peças: entrada do veículo com leitura da placa por foto (IA), ordens de serviço com aprovação do cliente pelo WhatsApp e PDF, estoque com importação de NF-e e painel financeiro. Feito para o celular, no pátio.",
+    tags: ["Next.js", "Supabase", "IA (Gemini)", "Mobile-first"],
+  },
 ];
 
 /* numeração automática (01, 02, …) na ordem da lista acima */
