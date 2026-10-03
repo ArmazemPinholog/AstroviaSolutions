@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K-TEX · Tattoo Aftercare</title>
+<meta name="description" content="K-TEX: cuidado pós-tatuagem com atitude underground. Pomadas, limpeza e kits para quem leva a tattoo a sério.">
+<meta name="theme-color" content="#050505">
+<meta property="og:title" content="K-TEX · Tattoo Aftercare">
+<meta property="og:image" content="assets/og.jpg">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050505; --panel:#0e0e10; --line:rgba(255,255,255,.09);
+  --text:#f2f2f0; --muted:#8f8f8c; --green:#9DFF00; --pink:#FF2D87;
+  --chrome:linear-gradient(180deg,#ffffff 0%,#d4d4d4 38%,#5d5d5d 52%,#9a9a9a 64%,#f0f0f0 100%);
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{overflow-x:clip}
+html.lenis{height:auto}.lenis.lenis-smooth{scroll-behavior:auto}
+body{background:var(--bg);color:var(--text);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:clip}
+body.loading{overflow:hidden}
+img,video,canvas{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+::selection{background:var(--green);color:#050505}
+.wrap{width:min(1320px,100% - 48px);margin-inline:auto}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase}
+.serif{font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;text-transform:none;letter-spacing:-.01em}
+.display{font-family:'Anton',sans-serif;font-weight:400;text-transform:uppercase;letter-spacing:.005em;line-height:.92}
+.chrome{background:var(--chrome);-webkit-background-clip:text;background-clip:text;color:transparent}
+.green{color:var(--green)}.pink{color:var(--pink)}
+
+/* ---------- fx layers ---------- */
+#fx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.grain{position:fixed;inset:-50%;pointer-events:none;z-index:200;opacity:.06;animation:gr 1s steps(4) infinite;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+@keyframes gr{0%{transform:translate(0,0)}25%{transform:translate(-3%,2%)}50%{transform:translate(2%,-3%)}75%{transform:translate(-2%,-1%)}}
+main,footer,.nav{position:relative;z-index:2}
+
+/* ---------- cursor ---------- */
+.cur,.cring{position:fixed;left:0;top:0;pointer-events:none;z-index:300;border-radius:50%;transform:translate(-50%,-50%)}
+.cur{width:6px;height:6px;background:var(--green)}
+.cring{width:38px;height:38px;border:1px solid rgba(255,255,255,.5);transition:width .35s var(--ease),height .35s var(--ease),background .35s,border-color .35s;mix-blend-mode:difference}
+.cring.big{width:84px;height:84px;background:#fff;border-color:#fff}
+@media (hover:none),(pointer:coarse){.cur,.cring{display:none}}
+
+/* ---------- loader ---------- */
+.loader{position:fixed;inset:0;z-index:400;background:#050505;display:flex;flex-direction:column;justify-content:space-between;padding:28px;transition:transform 1.1s var(--ease)}
+.loader.out{transform:translateY(-100%)}
+.loader .lTop{display:flex;justify-content:space-between;color:var(--muted)}
+.loader .lMid{display:flex;justify-content:space-between;align-items:flex-end;gap:20px}
+.loader .lWord{font-size:clamp(80px,20vw,300px)}
+.loader .lNum{font-family:'Anton';font-size:clamp(60px,12vw,180px);line-height:.8;color:var(--green);font-variant-numeric:tabular-nums}
+.loader .bar{height:1px;background:rgba(255,255,255,.12);margin-top:22px;position:relative;overflow:hidden}
+.loader .bar i{position:absolute;inset:0;background:var(--pink);transform-origin:left;transform:scaleX(0)}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;top:0;left:0;right:0;z-index:60;mix-blend-mode:normal}
+.nav .wrap{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;height:84px}
+.brand{display:flex;align-items:center;gap:10px;justify-self:start}
+.brand img{width:38px;height:38px;border-radius:50%;object-fit:cover;box-shadow:0 0 22px rgba(255,45,135,.45)}
+.brand b{font-family:'Anton';font-weight:400;font-size:22px;letter-spacing:.06em}
+.links{display:flex;gap:4px;padding:5px;border:1px solid var(--line);border-radius:999px;background:rgba(10,10,12,.55);backdrop-filter:blur(14px)}
+.links a{font-size:13px;padding:9px 16px;border-radius:999px;color:#cfcfcc;transition:background .3s,color .3s}
+.links a:hover{background:rgba(255,255,255,.08);color:#fff}
+.navR{justify-self:end;display:flex;gap:10px;align-items:center}
+.pillBtn{height:46px;padding:0 20px;border-radius:999px;border:1px solid var(--line);background:rgba(10,10,12,.55);backdrop-filter:blur(14px);display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}
+.pillBtn:hover{border-color:var(--green)}
+.pillBtn .cnt{min-width:22px;height:22px;border-radius:11px;background:var(--green);color:#050505;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+
+/* ---------- buttons ---------- */
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:12px;height:56px;padding:0 30px;border-radius:999px;font-weight:600;font-size:15px;overflow:hidden;isolation:isolate;transition:transform .5s var(--ease)}
+.btn span{position:relative;z-index:1}
+.btn:before{content:"";position:absolute;inset:0;border-radius:inherit;z-index:0;transform:translateY(101%);transition:transform .6s var(--ease)}
+.btn:hover:before{transform:none}
+.btn-green{background:var(--green);color:#050505}.btn-green:before{background:#fff}
+.btn-ghost{border:1px solid rgba(255,255,255,.22);color:#fff}.btn-ghost:before{background:var(--pink)}
+.btn .arr{width:26px;height:26px;border-radius:50%;background:#050505;color:var(--green);display:grid;place-items:center;font-size:13px;position:relative;z-index:1}
+
+/* ---------- STORY (hero scroll) ---------- */
+.story{height:560vh;position:relative}
+.stage{position:sticky;top:0;height:100vh;overflow:hidden}
+.giant{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:34vw;white-space:nowrap;opacity:0;will-change:transform,opacity;filter:drop-shadow(0 0 40px rgba(255,45,135,.25))}
+.rings{position:absolute;left:50%;top:50%;width:min(120vmin,1200px);aspect-ratio:1;transform:translate(-50%,-50%);opacity:.55}
+.rings circle{fill:none;stroke:rgba(255,255,255,.12);stroke-width:.6}
+.rings .dash{stroke:var(--green);stroke-dasharray:2 10;stroke-width:1.2;opacity:.5}
+.rings .pk{stroke:var(--pink);stroke-dasharray:60 400;stroke-width:1.5}
+.skull{position:absolute;left:50%;top:50%;width:min(86vmin,820px);aspect-ratio:1;transform:translate(-50%,-50%);will-change:transform}
+.skull video{width:100%;height:100%;object-fit:cover;mix-blend-mode:lighten;-webkit-mask-image:radial-gradient(circle at 50% 48%,#000 55%,transparent 72%);mask-image:radial-gradient(circle at 50% 48%,#000 55%,transparent 72%)}
+.chap{position:absolute;max-width:420px;opacity:0;will-change:opacity,transform}
+.chap .mono{color:var(--pink);display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.chap .mono:after{content:"";width:40px;height:1px;background:currentColor}
+.chap h2{font-size:clamp(40px,4.6vw,76px)}
+.chap h2 .serif{color:var(--green);font-size:1.08em;display:block}
+.chap p{color:#c3c3c0;margin-top:16px;font-size:16px;max-width:360px}
+.c0{left:4vw;bottom:10vh;max-width:560px}
+.c0 h1{font-size:clamp(48px,6.6vw,108px)}
+.c0 h1 .serif{color:var(--green);font-size:1.04em;display:block;line-height:.95}
+.c0 .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.c1{left:5vw;top:24vh}
+.c2{right:5vw;top:30vh;text-align:right}.c2 .mono{justify-content:flex-end}.c2 .mono:after{order:-1}.c2 p{margin-left:auto}
+.c3{left:50%;bottom:9vh;transform:translateX(-50%);text-align:center;max-width:none;width:100%}
+.c3 h2{font-size:clamp(34px,4vw,64px)}
+.c3 .row{display:flex;justify-content:center;gap:12px;margin-top:24px}
+.hud{position:absolute;left:4vw;right:4vw;bottom:28px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);pointer-events:none}
+.hud .prog{flex:1;height:1px;background:rgba(255,255,255,.14);margin:0 24px;position:relative}
+.hud .prog i{position:absolute;left:0;top:0;bottom:0;background:var(--green);width:0}
+.side{position:absolute;right:4vw;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px}
+.side i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);transition:background .4s,transform .4s}
+.side i.on{background:var(--green);transform:scale(1.6)}
+
+/* ---------- manifesto ---------- */
+.manifesto{padding:22vh 0 18vh}
+.manifesto .mono{color:var(--pink);margin-bottom:40px}
+.manifesto p{font-family:'Archivo';font-weight:500;font-size:clamp(30px,4.3vw,70px);line-height:1.08;letter-spacing:-.025em;max-width:1200px}
+.manifesto p .w{opacity:.13;transition:opacity .25s linear}
+.manifesto p .w.on{opacity:1}
+.manifesto p .s{font-family:'Instrument Serif';font-style:italic;font-weight:400;color:var(--green);letter-spacing:-.01em}
+
+/* ---------- marquee ---------- */
+.mq{overflow:hidden;border-block:1px solid var(--line);padding:26px 0;background:rgba(5,5,5,.6);backdrop-filter:blur(6px)}
+.mq .t{display:flex;width:max-content;animation:mq 34s linear infinite}
+.mq span{font-family:'Anton';font-size:clamp(46px,7vw,110px);text-transform:uppercase;line-height:1;padding-right:60px;display:flex;align-items:center;gap:60px;color:transparent;-webkit-text-stroke:1px rgba(255,255,255,.4)}
+.mq span:nth-child(odd){color:var(--text);-webkit-text-stroke:0}
+.mq span:after{content:"";width:18px;height:18px;border-radius:50%;background:var(--pink);box-shadow:0 0 24px var(--pink)}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+/* ---------- produtos (horizontal) ---------- */
+.prodIntro{padding:18vh 0 8vh;display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap}
+.prodIntro h2{font-size:clamp(56px,9vw,150px)}
+.prodIntro h2 .serif{color:var(--green)}
+.prodIntro p{max-width:360px;color:var(--muted)}
+.hz{position:relative}
+.hzStage{position:sticky;top:0;height:100vh;overflow:hidden;display:flex;align-items:center}
+.track{display:flex;gap:3vw;padding:0 6vw;will-change:transform}
+.pp{flex:none;width:min(82vw,1100px);height:min(74vh,720px);border-radius:28px;border:1px solid var(--line);background:linear-gradient(140deg,rgba(22,22,25,.92),rgba(8,8,9,.92));display:grid;grid-template-columns:1fr 1.1fr;overflow:hidden;position:relative}
+.pp:before{content:"";position:absolute;width:60%;aspect-ratio:1;right:-5%;top:50%;transform:translateY(-50%);background:radial-gradient(circle,rgba(255,45,135,.32),transparent 62%);filter:blur(10px)}
+.ppTxt{padding:48px;display:flex;flex-direction:column;position:relative;z-index:1}
+.ppTxt .idx{display:flex;justify-content:space-between;color:var(--muted)}
+.ppTxt .idx b{color:var(--green);font-weight:600}
+.ppTxt h3{font-size:clamp(40px,4.4vw,78px);margin-top:auto}
+.ppTxt .var{font-family:'Instrument Serif';font-style:italic;font-size:clamp(28px,2.6vw,44px);color:var(--green);line-height:1;margin:6px 0 16px}
+.ppTxt .desc{color:#b9b9b6;max-width:380px}
+.ppTxt .buy{display:flex;align-items:center;gap:22px;margin-top:30px;flex-wrap:wrap}
+.ppTxt .price{font-family:'Anton';font-size:44px;letter-spacing:.02em}
+.ppTxt .atac{color:var(--muted);font-size:13px;margin-top:10px}
+.ppArt{position:relative;display:grid;place-items:center;z-index:1}
+.ppArt svg,.ppArt img{width:74%;max-height:86%;filter:drop-shadow(0 40px 60px rgba(0,0,0,.8));transition:transform 1.2s var(--ease)}
+.pp:hover .ppArt svg{transform:rotate(-4deg) scale(1.04)}
+.ppArt .tag{position:absolute;top:30px;right:30px;background:var(--pink);color:#fff;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;padding:7px 12px;border-radius:999px}
+.ppEnd{flex:none;width:min(60vw,700px);height:min(74vh,720px);display:flex;flex-direction:column;justify-content:center;gap:24px;padding-left:2vw}
+.ppEnd h3{font-size:clamp(46px,5vw,90px)}
+
+/* ---------- ritual ---------- */
+.ritual{padding:22vh 0 10vh}
+.ritual .top{display:flex;justify-content:space-between;align-items:flex-end;gap:30px;flex-wrap:wrap;margin-bottom:8vh}
+.ritual h2{font-size:clamp(56px,9vw,150px)}
+.ritual h2 .serif{color:var(--green)}
+.rRow{display:grid;grid-template-columns:180px 1fr 1.2fr;gap:30px;align-items:start;padding:44px 0;border-top:1px solid var(--line);position:relative}
+.rRow:last-of-type{border-bottom:1px solid var(--line)}
+.rRow .n{font-family:'Anton';font-size:96px;line-height:.8;color:transparent;-webkit-text-stroke:1px rgba(157,255,0,.6)}
+.rRow h3{font-family:'Anton';font-weight:400;text-transform:uppercase;font-size:clamp(38px,4vw,64px);line-height:1}
+.rRow p{color:#b5b5b2;font-size:17px;max-width:520px}
+.rRow:before{content:"";position:absolute;left:0;top:-1px;height:1px;width:0;background:var(--green);transition:width 1.4s var(--ease)}
+.rRow.in:before{width:100%}
+.note{margin-top:20px;color:#5f5f5c;font-size:13px}
+
+/* ---------- atacado ---------- */
+.atacado{padding:16vh 0}
+.atBox{border:1px solid var(--line);border-radius:32px;overflow:hidden;display:grid;grid-template-columns:1.05fr .95fr;background:radial-gradient(circle at 0% 100%,rgba(255,45,135,.18),transparent 45%),radial-gradient(circle at 100% 0%,rgba(157,255,0,.12),transparent 45%),rgba(12,12,14,.85);backdrop-filter:blur(10px)}
+.atL{padding:60px}
+.atL h2{font-size:clamp(48px,6vw,100px)}
+.atL h2 .serif{color:var(--green)}
+.atL>p{color:#b9b9b6;margin-top:20px;max-width:480px;font-size:17px}
+.perk{display:grid;grid-template-columns:60px 1fr;gap:16px;padding:22px 0;border-top:1px solid var(--line)}
+.perks{margin-top:40px}
+.perk b{font-family:'JetBrains Mono';font-size:12px;color:var(--green);padding-top:4px}
+.perk h4{font-size:18px;font-weight:600}
+.perk p{color:var(--muted);font-size:14px}
+.atR{padding:60px;border-left:1px solid var(--line);background:rgba(0,0,0,.25)}
+.atR h3{font-family:'Anton';font-weight:400;font-size:34px;letter-spacing:.02em}
+.atR>p{color:var(--muted);font-size:14px;margin:6px 0 26px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fields .full{grid-column:1/-1}
+label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#a9a9a6;letter-spacing:.02em}
+input,select,textarea{height:52px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(5,5,5,.7);color:var(--text);padding:0 16px;font:inherit;font-size:15px;outline:none;transition:border-color .3s,box-shadow .3s}
+input:focus{border-color:var(--green);box-shadow:0 0 0 4px rgba(157,255,0,.12)}
+
+/* ---------- faq ---------- */
+.faq{padding:10vh 0 16vh;display:grid;grid-template-columns:.8fr 1.2fr;gap:60px}
+.faq h2{font-size:clamp(48px,6vw,100px)}
+.faq h2 .serif{color:var(--green)}
+details{border-top:1px solid var(--line);padding:26px 0}
+details:last-child{border-bottom:1px solid var(--line)}
+summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:20px;font-size:20px;font-weight:500}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"";width:22px;height:22px;flex:none;background:linear-gradient(var(--green),var(--green)) center/100% 1.5px no-repeat,linear-gradient(var(--green),var(--green)) center/1.5px 100% no-repeat;transition:transform .5s var(--ease)}
+details[open] summary:after{transform:rotate(135deg)}
+details p{color:var(--muted);margin-top:14px;max-width:620px}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);padding-top:12vh;overflow:hidden;background:linear-gradient(transparent,rgba(255,45,135,.07))}
+.fTop{display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap}
+.fTop h2{font-size:clamp(40px,5vw,80px);max-width:12ch}
+.fTop h2 .serif{color:var(--green)}
+.fCols{display:flex;gap:60px;flex-wrap:wrap}
+.fCols div{display:flex;flex-direction:column;gap:10px;font-size:15px}
+.fCols .mono{color:var(--muted);margin-bottom:6px}
+.fCols a:hover{color:var(--green)}
+.fBig{font-size:30.5vw;line-height:.78;margin-top:10vh;text-align:center;letter-spacing:-.01em;filter:drop-shadow(0 0 50px rgba(255,45,135,.3));user-select:none}
+.fBot{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;padding:22px 0 28px;flex-wrap:wrap;gap:10px}
+
+/* ---------- drawer/modal ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(6px);z-index:80;opacity:0;pointer-events:none;transition:opacity .5s}
+.scrim.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:12px;right:12px;bottom:12px;width:min(460px,calc(100% - 24px));background:#0b0b0c;border:1px solid var(--line);border-radius:24px;z-index:90;transform:translateX(110%);transition:transform .7s var(--ease);display:flex;flex-direction:column;overflow:hidden}
+.drawer.on{transform:none}
+.dHead{display:flex;justify-content:space-between;align-items:center;padding:24px 26px;border-bottom:1px solid var(--line)}
+.dHead h3{font-family:'Anton';font-weight:400;font-size:28px;letter-spacing:.03em}
+.x{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center}
+.x:hover{border-color:var(--pink)}
+.dBody{flex:1;overflow:auto;padding:12px 26px}
+.line{display:grid;grid-template-columns:68px 1fr auto;gap:14px;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+.mini{width:68px;height:68px;border-radius:14px;background:#08080a;display:grid;place-items:center;border:1px solid var(--line)}
+.mini svg{width:72%}
+.line h4{font-size:15px;font-weight:600;line-height:1.25}
+.line small{color:var(--muted)}
+.qty{display:flex;align-items:center;gap:4px;margin-top:8px}
+.qty button{width:32px;height:32px;border-radius:9px;border:1px solid var(--line)}
+.qty span{min-width:26px;text-align:center;font-weight:600}
+.dFoot{padding:20px 26px 26px;border-top:1px solid var(--line);display:grid;gap:10px}
+.sum{display:flex;justify-content:space-between;color:#cfcfcc;font-size:15px}
+.sum.total{font-size:20px;color:var(--text);font-weight:700}
+.hint{font-size:13px;color:var(--green)}
+.empty{text-align:center;color:var(--muted);padding:60px 10px}
+.modal{position:fixed;inset:0;z-index:95;display:grid;place-items:center;padding:16px;opacity:0;pointer-events:none;transition:opacity .4s}
+.modal.on{opacity:1;pointer-events:auto}
+.mBox{background:#0b0b0c;border:1px solid var(--line);border-radius:26px;width:min(780px,100%);max-height:92vh;overflow:auto;padding:32px}
+.mBox h3{font-family:'Anton';font-weight:400;font-size:34px;letter-spacing:.02em}
+.err{color:var(--pink);font-size:14px;min-height:20px}
+.ok{text-align:center;padding:20px 0}
+.ok .big{font-family:'Anton';font-size:64px;color:var(--green);line-height:1}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,30px);background:var(--green);color:#050505;font-weight:700;padding:14px 22px;border-radius:999px;z-index:99;opacity:0;transition:.5s var(--ease);pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(60px);transition:opacity 1.2s var(--ease),transform 1.2s var(--ease)}
+.rv.in{opacity:1;transform:none}
+.lines .ln{display:block;overflow:hidden}
+.lines .ln>span{display:block;transform:translateY(105%);transition:transform 1.2s var(--ease)}
+.lines.in .ln>span{transform:none}
+.lines.in .ln:nth-child(2)>span{transition-delay:.08s}.lines.in .ln:nth-child(3)>span{transition-delay:.16s}
+
+@media (max-width:980px){
+  .links{display:none}
+  .nav .wrap{grid-template-columns:1fr auto}
+  .pp{grid-template-columns:1fr;grid-template-rows:1fr auto;height:auto;min-height:0;width:100%}
+  .ppArt{height:42vh;order:-1}
+  .ppTxt{padding:28px}
+  .hz{height:auto!important}.hzStage{position:static;height:auto;display:block}
+  .track{flex-direction:column;padding:0 20px;gap:20px;transform:none!important}
+  .ppEnd{width:100%;height:auto;padding:40px 0}
+  .atBox{grid-template-columns:1fr}.atR{border-left:0;border-top:1px solid var(--line)}
+  .atL,.atR{padding:34px 24px}
+  .faq{grid-template-columns:1fr;gap:20px}
+  .rRow{grid-template-columns:80px 1fr;gap:16px}.rRow p{grid-column:2}.rRow .n{font-size:60px}
+  .c1,.c2{left:24px;right:24px;text-align:left;top:auto;bottom:12vh}.c2 .mono{justify-content:flex-start}.c2 .mono:after{order:0}.c2 p{margin-left:0}
+  .side{display:none}
+}
+@media (max-width:560px){
+  .wrap{width:calc(100% - 32px)}
+  .pillBtn.hideM{display:none}
+  .skull{width:110vw;top:40%}
+  .c0{left:16px;right:16px;bottom:8vh}
+  .fields{grid-template-columns:1fr}
+  .giant{font-size:44vw}
+}
+@media (prefers-reduced-motion:reduce){.rv,.lines .ln>span{opacity:1;transform:none;transition:none}.mq .t,.grain{animation:none}}
+</style>
+</head>
+<body class="loading">
+<canvas id="fx" aria-hidden="true"></canvas>
+<div class="grain" aria-hidden="true"></div>
+<div class="cur" aria-hidden="true"></div><div class="cring" aria-hidden="true"></div>
+
+<div class="loader" id="loader" aria-hidden="true">
+  <div class="lTop mono"><span>K-TEX ©<span class="yr"></span></span><span>Tattoo aftercare</span></div>
+  <div>
+    <div class="lMid"><div class="lWord display chrome">K-TEX</div><div class="lNum" id="lNum">00</div></div>
+    <div class="bar"><i id="lBar"></i></div>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="wrap">
+    <a href="#top" class="brand" aria-label="K-TEX início"><img src="assets/icon.png" alt=""><b>K-TEX</b></a>
+    <nav class="links" aria-label="Seções"><a href="#produtos">Produtos</a><a href="#ritual">Como usar</a><a href="#atacado">Estúdios</a><a href="#faq">Dúvidas</a></nav>
+    <div class="navR">
+      <a href="#atacado" class="pillBtn hideM">Sou tatuador</a>
+      <button class="pillBtn" id="openCart" aria-label="Abrir carrinho">Carrinho <span class="cnt" id="cartCount">0</span></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<!-- ===== STORY ===== -->
+<section class="story" id="story">
+  <div class="stage">
+    <div class="giant display chrome" id="giant" aria-hidden="true">K-TEX</div>
+    <svg class="rings" id="rings" viewBox="0 0 200 200" aria-hidden="true">
+      <circle cx="100" cy="100" r="98"/><circle cx="100" cy="100" r="80"/><circle class="dash" cx="100" cy="100" r="66"/><circle class="pk" cx="100" cy="100" r="80"/><circle cx="100" cy="100" r="50"/>
+    </svg>
+    <div class="skull" id="skull"><video id="vid" poster="assets/skull-poster.jpg" muted playsinline preload="auto"><source src="assets/skull-scrub.mp4" type="video/mp4"><source src="assets/skull-scrub.webm" type="video/webm"></video></div>
+
+    <div class="chap c0" id="c0">
+      <h1 class="display">Sua tattoo merece <span class="serif">cura de verdade.</span></h1>
+      <div class="row"><a href="#produtos" class="btn btn-green"><span>Comprar agora</span><span class="arr">↓</span></a><a href="#atacado" class="btn btn-ghost"><span>Sou tatuador</span></a></div>
+    </div>
+    <div class="chap c1" id="c1"><div class="mono">01 · Origem</div><h2 class="display">Nascida no <span class="serif">estúdio</span></h2><p>Entre agulhas, tinta e madrugadas de sessão. Feita por quem vive a tattoo, para quem carrega a arte na pele.</p></div>
+    <div class="chap c2" id="c2"><div class="mono">02 · Cuidado</div><h2 class="display">Do primeiro dia <span class="serif">à cicatrização</span></h2><p>Um ritual simples para proteger o traço, a cor e o trabalho do seu tatuador.</p></div>
+    <div class="chap c3" id="c3"><div class="mono pink" style="margin-bottom:14px">03 · Underground care</div><h2 class="display">Heal the <span class="serif green">ink.</span></h2><div class="row"><a href="#produtos" class="btn btn-green"><span>Conheça a linha</span><span class="arr">→</span></a></div></div>
+
+    <div class="side" id="side"><i></i><i></i><i></i><i></i></div>
+    <div class="hud mono"><span id="hudL">Role para explorar</span><span class="prog"><i id="prog"></i></span><span id="hudR">00</span></div>
+  </div>
+</section>
+
+<!-- ===== MANIFESTO ===== -->
+<section class="manifesto">
+  <div class="wrap">
+    <div class="mono">Manifesto</div>
+    <p id="mani">A tattoo é para a vida toda. O cuidado começa no <span class="s">primeiro minuto.</span> A K-TEX nasceu dentro do estúdio, para quem não aceita meio-termo na pele, na arte e na <span class="s">atitude.</span></p>
+  </div>
+</section>
+
+<div class="mq" aria-hidden="true"><div class="t" id="mq"></div></div>
+
+<!-- ===== PRODUTOS ===== -->
+<section id="produtos">
+  <div class="wrap prodIntro">
+    <h2 class="display lines"><span class="ln"><span>A linha</span></span><span class="ln"><span class="serif">K-TEX</span></span></h2>
+    <p class="rv">Pomadas, limpeza e kits. Pix, cartão ou boleto pelo Mercado Pago, com entrega para todo o Brasil.</p>
+  </div>
+  <div class="hz" id="hz"><div class="hzStage"><div class="track" id="track"></div></div></div>
+</section>
+
+<!-- ===== RITUAL ===== -->
+<section class="ritual" id="ritual">
+  <div class="wrap">
+    <div class="top"><h2 class="display lines"><span class="ln"><span>O ritual</span></span><span class="ln"><span class="serif">em três passos</span></span></h2><p class="rv" style="max-width:340px;color:var(--muted)">Simples, sem frescura. Siga sempre a orientação do seu tatuador.</p></div>
+    <div class="rRow rv"><span class="n">01</span><h3>Limpe</h3><p>Lave a tattoo com as mãos limpas e água corrente, sem esfregar. Seque só encostando papel toalha.</p></div>
+    <div class="rRow rv"><span class="n">02</span><h3>Aplique</h3><p>Uma camada fina de pomada K-TEX. Fina mesmo: a pele precisa respirar para cicatrizar.</p></div>
+    <div class="rRow rv"><span class="n">03</span><h3>Repita</h3><p>Repita ao longo do dia, durante o período indicado pelo seu tatuador.</p></div>
+    <p class="note">[Ajuste estas instruções conforme o rótulo aprovado do produto.]</p>
+  </div>
+</section>
+
+<!-- ===== ATACADO ===== -->
+<section class="atacado" id="atacado">
+  <div class="wrap">
+    <div class="atBox rv">
+      <div class="atL">
+        <div class="mono pink" style="margin-bottom:20px">Para estúdios</div>
+        <h2 class="display">Revenda <span class="serif">K-TEX</span> no seu estúdio</h2>
+        <p>Entregue o pós-tattoo junto com a arte. Seu cliente sai cuidado e o seu estúdio ganha mais uma fonte de receita.</p>
+        <div class="perks">
+          <div class="perk"><b>01</b><div><h4>Preço de atacado</h4><p>Tabela exclusiva liberada pelo código do seu estúdio.</p></div></div>
+          <div class="perk"><b>02</b><div><h4>Frete por nossa conta</h4><p>Pedidos de atacado acima do mínimo têm frete incluso.</p></div></div>
+          <div class="perk"><b>03</b><div><h4>Kit pós-sessão</h4><p>Tamanhos de bolso pensados para entregar no fim da sessão.</p></div></div>
+        </div>
+      </div>
+      <form class="atR" id="studioForm">
+        <h3>Cadastre seu estúdio</h3>
+        <p>A gente analisa e manda o código de atacado pelo WhatsApp.</p>
+        <div class="fields">
+          <label class="full">Nome do estúdio<input name="nome" required autocomplete="organization"></label>
+          <label>Responsável<input name="responsavel" required autocomplete="name"></label>
+          <label>WhatsApp<input name="tel" required inputmode="tel" autocomplete="tel"></label>
+          <label>CNPJ ou CPF<input name="cnpj" required inputmode="numeric"></label>
+          <label>Instagram<input name="instagram" placeholder="@seuestudio"></label>
+          <label>Cidade<input name="cidade" required autocomplete="address-level2"></label>
+          <label>UF<input name="uf" required maxlength="2" autocomplete="address-level1"></label>
+        </div>
+        <p class="err" id="studioErr"></p>
+        <button class="btn btn-green" style="width:100%" type="submit"><span>Quero revender</span><span class="arr">→</span></button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FAQ ===== -->
+<section class="wrap faq" id="faq">
+  <h2 class="display lines"><span class="ln"><span>Dúvidas</span></span><span class="ln"><span class="serif">frequentes</span></span></h2>
+  <div class="rv">
+    <details><summary>Quais formas de pagamento vocês aceitam?</summary><p>Pix, cartão de crédito com parcelamento e boleto, pelo Mercado Pago.</p></details>
+    <details><summary>Qual o prazo de entrega?</summary><p>[Defina o prazo de envio e o prazo médio por região.]</p></details>
+    <details><summary>Tem frete grátis?</summary><p id="faqFrete"></p></details>
+    <details><summary>Sou tatuador. Como compro no atacado?</summary><p>Cadastre seu estúdio na seção "Para estúdios". Depois da aprovação você recebe um código que libera o preço de atacado no carrinho.</p></details>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="fTop">
+      <h2 class="display">A arte é sua. <span class="serif">O cuidado também.</span></h2>
+      <div class="fCols">
+        <div><span class="mono">Loja</span><a href="#produtos">Produtos</a><a href="#ritual">Como usar</a><a href="#faq">Dúvidas</a></div>
+        <div><span class="mono">Contato</span><a id="igLink" href="#" target="_blank" rel="noopener">Instagram</a><a id="waLink" href="#" target="_blank" rel="noopener">WhatsApp</a><a href="#atacado">Atacado</a></div>
+        <div><span class="mono">Empresa</span><a href="admin.html">Área da empresa</a></div>
+      </div>
+    </div>
+  </div>
+  <div class="fBig display chrome" aria-hidden="true">K-TEX</div>
+  <div class="wrap fBot"><span>© <span class="yr"></span> K-TEX · Tattoo Aftercare</span><span>Heal the ink.</span></div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Carrinho">
+  <div class="dHead"><h3>Carrinho</h3><button class="x" data-close aria-label="Fechar carrinho">✕</button></div>
+  <div class="dBody" id="cartBody"></div>
+  <div class="dFoot" id="cartFoot"></div>
+</aside>
+<div class="modal" id="checkout" role="dialog" aria-modal="true" aria-labelledby="coTitle"><div class="mBox" id="coBox"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+<script src="assets/store.js"></script>
+<script>
+const K = window.KTEX, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const range = (p, a, b) => clamp((p - a) / (b - a));
+const isMobile = matchMedia('(max-width:980px)').matches, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+$$('.yr').forEach(e => e.textContent = new Date().getFullYear());
+
+/* ---------- referência de vendedor ---------- */
+const ref = new URLSearchParams(location.search).get('ref');
+if (ref) try { localStorage.setItem('ktex_ref', ref.toUpperCase()); } catch (e) {}
+const getRef = () => { try { return localStorage.getItem('ktex_ref') || ''; } catch (e) { return ''; } };
+
+/* ---------- smooth scroll ---------- */
+let lenis = null;
+if (window.Lenis && !reduce) { lenis = new Lenis({ lerp: .09, smoothWheel: true }); }
+const goTo = h => { const t = document.querySelector(h); if (!t) return; lenis ? lenis.scrollTo(t, { offset: 0, duration: 1.6 }) : t.scrollIntoView({ behavior: 'smooth' }); };
+document.addEventListener('click', e => { const a = e.target.closest('a[href^="#"]'); if (a && a.getAttribute('href').length > 1) { e.preventDefault(); closeAll(); goTo(a.getAttribute('href')); } });
+
+/* ---------- loader ---------- */
+const vid = $('#vid');
+(function loader() {
+  let shown = 0, target = 0, done = false; const t0 = performance.now();
+  const finish = () => { if (done) return; done = true; };
+  vid.addEventListener('canplaythrough', finish, { once: true });
+  vid.addEventListener('loadeddata', () => setTimeout(finish, 600), { once: true });
+  setTimeout(finish, 4500);
+  (function tick() {
+    const el = performance.now() - t0;
+    target = done ? 100 : Math.min(90, el / 25);
+    if (el < 1300) target = Math.min(target, el / 13);
+    shown += (target - shown) * .12;
+    $('#lNum').textContent = String(Math.round(shown)).padStart(2, '0');
+    $('#lBar').style.transform = `scaleX(${shown / 100})`;
+    if (shown > 99.4) { $('#lNum').textContent = '100'; setTimeout(() => { $('#loader').classList.add('out'); document.body.classList.remove('loading'); }, 250); return; }
+    requestAnimationFrame(tick);
+  })();
+})();
+
+/* ---------- cursor ---------- */
+const cur = $('.cur'), ring = $('.cring'); let mx = innerWidth / 2, my = innerHeight / 2, rx = mx, ry = my;
+addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; cur.style.transform = `translate(${mx}px,${my}px) translate(-50%,-50%)`; });
+document.addEventListener('pointerover', e => ring.classList.toggle('big', !!e.target.closest('a,button,summary,input,label')));
+
+/* ---------- partículas (fundo) ---------- */
+const cv = $('#fx'), cx = cv.getContext('2d'); let W, H, DPR = Math.min(2, devicePixelRatio || 1), parts = [];
+function sizeFx() { W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR; }
+sizeFx(); addEventListener('resize', sizeFx);
+const N = isMobile ? 260 : 700;
+for (let i = 0; i < N; i++) parts.push({ x: Math.random() * 2 - 1, y: Math.random() * 2 - 1, z: Math.random(), s: Math.random() * 1.6 + .3, c: Math.random() < .18 ? 1 : (Math.random() < .5 ? 2 : 0), v: Math.random() * .0006 + .0002 });
+let scrollY0 = 0;
+function drawFx(t) {
+  cx.clearRect(0, 0, W, H);
+  const px = (mx / innerWidth - .5), py = (my / innerHeight - .5), sc = scrollY0 * .00025;
+  for (const p of parts) {
+    p.y -= p.v; if (p.y < -1.1) p.y = 1.1;
+    const d = .35 + p.z * .65;
+    const x = ((p.x + px * .06 * d) * .5 + .5) * W, y = (((p.y + sc * d) % 2.2 + 2.2) % 2.2 - 1.1) * .5 * H + H / 2 + py * 30 * d * DPR;
+    const a = (.15 + p.z * .55) * (.6 + .4 * Math.sin(t * .001 + p.x * 9));
+    cx.fillStyle = p.c === 1 ? `rgba(255,45,135,${a})` : p.c === 2 ? `rgba(157,255,0,${a * .8})` : `rgba(255,255,255,${a * .6})`;
+    cx.beginPath(); cx.arc(x, y, p.s * d * DPR, 0, 6.283); cx.fill();
+  }
+}
+
+/* ---------- STORY ---------- */
+const story = $('#story'), giant = $('#giant'), skull = $('#skull'), rings = $('#rings');
+const C = [$('#c0'), $('#c1'), $('#c2'), $('#c3')], dots = $$('#side i');
+let vReady = false, vCur = 0, vTarget = 0;
+vid.addEventListener('loadedmetadata', () => vReady = true); if (vid.readyState >= 1) vReady = true;
+document.addEventListener('touchstart', () => { vid.play().then(() => vid.pause()).catch(() => {}); }, { once: true, passive: true });
+function chapter(el, p, a, b, dir = 1) { // fade in at a, out at b
+  const i = range(p, a, a + .06), o = 1 - range(p, b - .06, b), v = Math.min(i, o);
+  el.style.opacity = v; el.style.pointerEvents = v > .5 ? 'auto' : 'none';
+  el.style.transform = (el === C[3] ? 'translateX(-50%) ' : '') + `translateY(${(1 - v) * 40 * dir}px)`;
+  el.style.filter = `blur(${(1 - v) * 8}px)`;
+  return v;
+}
+function updStory() {
+  const r = story.getBoundingClientRect(), total = story.offsetHeight - innerHeight, p = clamp(-r.top / total);
+  vTarget = range(p, .04, .8);
+  // c0 visible from start
+  const v0 = 1 - range(p, .06, .14); C[0].style.opacity = v0; C[0].style.transform = `translateY(${-p * 300}px)`; C[0].style.pointerEvents = v0 > .5 ? 'auto' : 'none'; C[0].style.filter = `blur(${(1 - v0) * 8}px)`;
+  chapter(C[1], p, .18, .42); chapter(C[2], p, .44, .68); chapter(C[3], p, .74, 1.07);
+  // gigante K-TEX surge quando o texto do vídeo derrete
+  const g = range(p, .56, .72) * (1 - range(p, .95, 1));
+  giant.style.opacity = g * .55; giant.style.transform = `translate(-50%,-50%) scale(${.85 + p * .3}) translateX(${(.5 - p) * 8}vw)`;
+  // caveira: zoom e deslocamento
+  const sx = isMobile ? 0 : (p < .44 ? range(p, .18, .3) * 12 : 12 - range(p, .44, .56) * 24) * (1 - range(p, .68, .8));
+  const s = 1 + range(p, .1, .5) * .18 - range(p, .74, .95) * .35;
+  skull.style.transform = `translate(calc(-50% + ${sx}vw), calc(-50% - ${range(p, .74, .95) * 8}vh)) scale(${s})`;
+  rings.style.transform = `translate(-50%,-50%) rotate(${p * 220}deg) scale(${.8 + p * .5})`;
+  rings.style.opacity = .55 * (1 - range(p, .85, 1));
+  $('#prog').style.width = p * 100 + '%';
+  $('#hudR').textContent = String(Math.round(p * 100)).padStart(2, '0');
+  $('#hudL').style.opacity = p > .02 ? .5 : 1;
+  const idx = p < .16 ? 0 : p < .43 ? 1 : p < .7 ? 2 : 3; dots.forEach((d, i) => d.classList.toggle('on', i === idx));
+}
+
+/* ---------- manifesto (palavra a palavra) ---------- */
+const mani = $('#mani');
+(function split(node) {
+  [...node.childNodes].forEach(n => {
+    if (n.nodeType === 3) { const f = document.createDocumentFragment(); n.textContent.split(/(\s+)/).forEach(w => { if (!w.trim()) f.append(w); else { const s = document.createElement('span'); s.className = 'w'; s.textContent = w; f.append(s); } }); n.replaceWith(f); }
+    else if (n.nodeType === 1) { n.classList.add('w'); }
+  });
+})(mani);
+const words = $$('#mani .w');
+function updMani() {
+  const r = mani.getBoundingClientRect(), p = clamp((innerHeight * .85 - r.top) / (r.height + innerHeight * .4));
+  const n = Math.floor(p * words.length * 1.05); words.forEach((w, i) => w.classList.toggle('on', i < n));
+}
+
+/* ---------- produtos: arte + trilho horizontal ---------- */
+function art(p) {
+  const cat = (p.categoria || '').toLowerCase(), id = 'a' + p.id + Math.random().toString(36).slice(2, 5);
+  const defs = `<defs><linearGradient id="g${id}" x1="0" x2="1"><stop offset="0" stop-color="#3f7400"/><stop offset=".22" stop-color="#e3ff9a"/><stop offset=".42" stop-color="#9DFF00"/><stop offset=".8" stop-color="#5a9e00"/><stop offset="1" stop-color="#2f5800"/></linearGradient>
+    <linearGradient id="b${id}" x1="0" x2="1"><stop offset="0" stop-color="#030303"/><stop offset=".18" stop-color="#3b3b3b"/><stop offset=".3" stop-color="#1a1a1a"/><stop offset=".75" stop-color="#070707"/><stop offset="1" stop-color="#222"/></linearGradient>
+    <linearGradient id="h${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>`;
+  const label = (y, s = 1) => `<image href="assets/icon.png" x="${100 - 28 * s}" y="${y}" width="${56 * s}" height="${56 * s}" clip-path="circle(48%)"/>
+    <text x="100" y="${y + 76 * s}" text-anchor="middle" font-family="Anton" font-size="${28 * s}" fill="#9DFF00" letter-spacing="1">K-TEX</text>
+    <text x="100" y="${y + 93 * s}" text-anchor="middle" font-family="JetBrains Mono" font-size="${8 * s}" fill="#FF2D87" letter-spacing="1.5">${esc((p.variacao || '').toUpperCase())}</text>`;
+  if (cat.includes('limp')) return `<svg viewBox="0 0 200 250" aria-hidden="true">${defs}<ellipse cx="100" cy="238" rx="56" ry="8" fill="#000"/>
+    <rect x="86" y="6" width="28" height="24" rx="4" fill="url(#g${id})"/><rect x="72" y="28" width="56" height="28" rx="7" fill="url(#g${id})"/>
+    <rect x="50" y="54" width="100" height="184" rx="24" fill="url(#b${id})"/><rect x="60" y="62" width="14" height="168" rx="7" fill="url(#h${id})"/>${label(98, .9)}</svg>`;
+  if (cat.includes('kit')) return `<svg viewBox="0 0 240 230" aria-hidden="true">${defs}<ellipse cx="120" cy="218" rx="104" ry="9" fill="#000"/>
+    <rect x="130" y="40" width="74" height="178" rx="20" fill="url(#b${id})"/><rect x="149" y="20" width="36" height="24" rx="5" fill="url(#g${id})"/>
+    <path d="M28 114h114v88a14 14 0 0 1-14 14H42a14 14 0 0 1-14-14z" fill="url(#b${id})"/><rect x="24" y="92" width="122" height="30" rx="7" fill="url(#g${id})"/>
+    <g transform="translate(-15 60) scale(.85)">${label(80, .8)}</g></svg>`;
+  return `<svg viewBox="0 0 200 200" aria-hidden="true">${defs}<ellipse cx="100" cy="190" rx="84" ry="9" fill="#000"/>
+    <path d="M22 70h156v102a16 16 0 0 1-16 16H38a16 16 0 0 1-16-16z" fill="url(#b${id})"/><rect x="30" y="78" width="16" height="104" rx="8" fill="url(#h${id})"/>
+    <rect x="16" y="36" width="168" height="42" rx="9" fill="url(#g${id})"/><rect x="16" y="36" width="168" height="8" rx="4" fill="#f2ffcc" opacity=".55"/>
+    ${label(90)}</svg>`;
+}
+function renderProducts() {
+  const prods = K.db.products.filter(p => p.ativo), n = prods.length;
+  $('#track').innerHTML = prods.map((p, i) => `
+    <article class="pp">
+      <div class="ppTxt">
+        <div class="idx mono"><span><b>${String(i + 1).padStart(2, '0')}</b> / ${String(n).padStart(2, '0')}</span><span>${esc(p.categoria)}</span></div>
+        <h3 class="display">${esc(p.nome.replace(/ K-TEX$/, ''))}</h3>
+        <div class="var">${esc(p.variacao)}</div>
+        <p class="desc">${esc(p.descricao)}</p>
+        <div class="buy"><span class="price">${K.money(p.preco)}</span>
+          <button class="btn btn-green" data-add="${p.id}" ${p.estoque > 0 ? '' : 'disabled style="opacity:.4"'}><span>${p.estoque > 0 ? 'Adicionar' : 'Esgotado'}</span><span class="arr">+</span></button></div>
+      </div>
+      <div class="ppArt">${p.destaque ? '<span class="tag">Destaque</span>' : ''}${p.img ? `<img src="${esc(p.img)}" alt="${esc(p.nome)}" loading="lazy">` : art(p)}</div>
+    </article>`).join('') + `<div class="ppEnd"><span class="mono pink">Tatuador?</span><h3 class="display">Preço de <span class="serif green">atacado</span> para o seu estúdio</h3><div><a href="#atacado" class="btn btn-ghost"><span>Cadastrar estúdio</span><span class="arr">→</span></a></div></div>`;
+  sizeHz();
+}
+$('#track').addEventListener('click', e => { const b = e.target.closest('[data-add]'); if (b) addToCart(b.dataset.add); });
+const hz = $('#hz'), track = $('#track');
+function sizeHz() { if (isMobile) { hz.style.height = ''; return; } hz.style.height = (track.scrollWidth - innerWidth + innerHeight) + 'px'; }
+function updHz() { if (isMobile) return; const r = hz.getBoundingClientRect(), tot = hz.offsetHeight - innerHeight, p = clamp(-r.top / tot); track.style.transform = `translateX(${-p * (track.scrollWidth - innerWidth)}px)`; }
+addEventListener('resize', sizeHz);
+
+/* ---------- reveals ---------- */
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { threshold: .2 });
+$$('.rv,.lines,.rRow').forEach(el => io.observe(el));
+$('#mq').innerHTML = Array(2).fill(['Heal the ink', 'Tattoo aftercare', 'Underground care', 'Feito para tatuados'].map(t => `<span>${t}</span>`).join('')).join('');
+
+/* ---------- loop principal ---------- */
+function frame(t) {
+  if (lenis) lenis.raf(t);
+  scrollY0 = scrollY;
+  rx += (mx - rx) * .16; ry += (my - ry) * .16; ring.style.transform = `translate(${rx}px,${ry}px) translate(-50%,-50%)`;
+  updStory(); updMani(); updHz();
+  vCur += (vTarget - vCur) * .1;
+  if (vReady && vid.duration && !vid.seeking) { const tt = vCur * (vid.duration - .05); if (Math.abs(vid.currentTime - tt) > .02) vid.currentTime = tt; }
+  if (!document.hidden) drawFx(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- carrinho ---------- */
+let cart = []; try { cart = JSON.parse(localStorage.getItem('ktex_cart')) || []; } catch (e) {}
+let studioCode = '';
+const saveCart = () => { try { localStorage.setItem('ktex_cart', JSON.stringify(cart)); } catch (e) {} renderCart(); };
+function addToCart(id) {
+  const p = K.db.products.find(x => x.id === id), it = cart.find(i => i.id === id);
+  if (it) { if (it.qtd < p.estoque) it.qtd++; } else cart.push({ id, qtd: 1 });
+  saveCart(); openDrawer();
+}
+function renderCart() {
+  cart = cart.filter(i => K.db.products.some(p => p.id === i.id && p.ativo));
+  $('#cartCount').textContent = cart.reduce((s, i) => s + i.qtd, 0);
+  if (!cart.length) { $('#cartBody').innerHTML = '<p class="empty">Seu carrinho está vazio.</p>'; $('#cartFoot').innerHTML = '<a href="#produtos" class="btn btn-green"><span>Ver produtos</span></a>'; return; }
+  const q = K.quote(cart, studioCode);
+  $('#cartBody').innerHTML = cart.map(i => { const p = K.db.products.find(x => x.id === i.id), it = q.itens.find(x => x.produtoId === i.id);
+    return `<div class="line"><div class="mini">${art(p)}</div><div><h4>${esc(p.nome)}</h4><small>${esc(p.variacao)} · ${K.money(it.preco)}</small>
+      <div class="qty"><button data-q="-1" data-id="${p.id}" aria-label="Diminuir">−</button><span>${i.qtd}</span><button data-q="1" data-id="${p.id}" aria-label="Aumentar">+</button></div></div>
+      <strong>${K.money(it.preco * i.qtd)}</strong></div>`; }).join('') +
+    `<label style="margin-top:18px">Código de estúdio (atacado)<input id="studioCode" value="${esc(studioCode)}" placeholder="Opcional"></label>${q.studio ? `<p class="hint" style="margin-top:8px">Preço de atacado ativo: ${esc(q.studio.nome)}</p>` : ''}`;
+  const falta = K.db.config.freteGratisAcima - q.subtotal;
+  $('#cartFoot').innerHTML = `${q.canal === 'varejo' && falta > 0 ? `<p class="hint">Faltam ${K.money(falta)} para o frete grátis</p>` : ''}
+    <div class="sum"><span>Subtotal</span><span>${K.money(q.subtotal)}</span></div><div class="sum"><span>Frete</span><span>${q.frete ? K.money(q.frete) : 'Grátis'}</span></div>
+    <div class="sum total"><span>Total</span><span>${K.money(q.total)}</span></div><button class="btn btn-green" id="goCheckout"><span>Finalizar compra</span><span class="arr">→</span></button>`;
+}
+$('#cartBody').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if (!b) return;
+  const it = cart.find(i => i.id === b.dataset.id), p = K.db.products.find(x => x.id === b.dataset.id);
+  it.qtd = Math.min(p.estoque, it.qtd + Number(b.dataset.q)); if (it.qtd <= 0) cart = cart.filter(i => i !== it); saveCart(); });
+$('#cartBody').addEventListener('change', e => { if (e.target.id === 'studioCode') { studioCode = e.target.value.trim(); renderCart(); } });
+$('#cartFoot').addEventListener('click', e => { if (e.target.closest('#goCheckout')) openCheckout(); });
+const lock = on => { if (lenis) on ? lenis.stop() : lenis.start(); };
+function openDrawer() { $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); lock(true); }
+function closeAll() { $$('.drawer,.modal,.scrim').forEach(x => x.classList.remove('on')); lock(false); }
+$('#openCart').onclick = openDrawer; $('#scrim').onclick = closeAll;
+document.addEventListener('click', e => { if (e.target.closest('[data-close]')) closeAll(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+
+/* ---------- checkout ---------- */
+function openCheckout() {
+  const q = K.quote(cart, studioCode);
+  $('#drawer').classList.remove('on');
+  $('#coBox').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px"><h3 id="coTitle">Finalizar compra</h3><button class="x" data-close aria-label="Fechar">✕</button></div>
+    <form id="coForm"><div class="fields">
+      <label class="full">Nome completo<input name="nome" required autocomplete="name"></label>
+      <label>E-mail<input name="email" type="email" required autocomplete="email"></label>
+      <label>WhatsApp<input name="tel" required inputmode="tel" autocomplete="tel"></label>
+      <label>CPF/CNPJ<input name="cpf" required inputmode="numeric"></label>
+      <label>CEP<input name="cep" required inputmode="numeric" autocomplete="postal-code" id="cep"></label>
+      <label class="full">Endereço e número<input name="endereco" required autocomplete="street-address" id="end"></label>
+      <label>Cidade<input name="cidade" required id="cid" autocomplete="address-level2"></label>
+      <label>UF<input name="uf" required maxlength="2" id="uf" autocomplete="address-level1"></label>
+      <label class="full">Código de vendedor (se alguém te indicou)<input name="seller" value="${esc(getRef())}" placeholder="Opcional"></label>
+    </div>
+    <div style="margin:22px 0 6px;padding:18px;border:1px solid var(--line);border-radius:16px">
+      ${q.itens.map(i => `<div class="sum"><span>${i.qtd}× ${esc(i.nome)}</span><span>${K.money(i.qtd * i.preco)}</span></div>`).join('')}
+      <div class="sum"><span>Frete</span><span>${q.frete ? K.money(q.frete) : 'Grátis'}</span></div>
+      <div class="sum total" style="margin-top:8px"><span>Total ${q.canal === 'atacado' ? '(atacado)' : ''}</span><span>${K.money(q.total)}</span></div></div>
+    <p class="err" id="coErr"></p>
+    <button class="btn btn-green" style="width:100%" type="submit"><span>Pagar com Mercado Pago</span><span class="arr">→</span></button>
+    <p class="mono" style="text-align:center;color:var(--muted);margin-top:14px">Pix · Cartão · Boleto</p></form>`;
+  $('#checkout').classList.add('on'); $('#scrim').classList.add('on'); lock(true);
+  $('#cep').addEventListener('blur', async e => { const c = e.target.value.replace(/\D/g, ''); if (c.length !== 8) return;
+    try { const r = await (await fetch('https://viacep.com.br/ws/' + c + '/json/')).json(); if (!r.erro) { $('#end').value = r.logradouro + ', '; $('#cid').value = r.localidade; $('#uf').value = r.uf; $('#end').focus(); } } catch (err) {} });
+  $('#coForm').addEventListener('submit', async e => {
+    e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+    try {
+      const o = K.createOrder({ cart, studioCode, sellerCode: f.seller, cliente: { nome: f.nome, email: f.email, tel: f.tel, cpf: f.cpf, cep: f.cep, endereco: f.endereco, cidade: f.cidade, uf: f.uf.toUpperCase() } });
+      const ep = K.db.config.mpEndpoint;
+      if (ep) { const r = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedido: o }) }); const j = await r.json(); if (j.init_point) { location.href = j.init_point; return; } }
+      cart = []; saveCart();
+      $('#coBox').innerHTML = `<div class="ok"><div class="big">Pedido ${esc(o.numero)}</div>
+        <p style="color:var(--muted);margin:14px auto 26px;max-width:420px">Pedido registrado. Assim que o Mercado Pago for ligado, você vai direto para o pagamento. Por enquanto, fale com a gente para concluir.</p>
+        <a class="btn btn-green" target="_blank" rel="noopener" href="https://wa.me/${K.db.config.whatsapp}?text=${encodeURIComponent('Olá! Quero pagar o pedido ' + o.numero + ' (' + K.money(o.total) + ').')}"><span>Pagar pelo WhatsApp</span></a></div>`;
+    } catch (err) { $('#coErr').textContent = err.message; }
+  });
+}
+
+/* ---------- estúdio ---------- */
+$('#studioForm').addEventListener('submit', e => {
+  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+  K.db.estudios.unshift({ id: K.uid('e'), ...f, uf: f.uf.toUpperCase(), status: 'pendente', codigo: '', data: new Date().toISOString() });
+  K.commit(); e.target.reset(); toast('Cadastro enviado! Em breve entramos em contato.');
+});
+
+let tt; function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2600); }
+function renderConfig() {
+  const c = K.db.config;
+  $('#faqFrete').textContent = `Frete grátis no varejo a partir de ${K.money(c.freteGratisAcima)}. Abaixo disso, frete fixo de ${K.money(c.freteFixo)}.`;
+  $('#igLink').href = 'https://instagram.com/' + c.instagram; $('#waLink').href = 'https://wa.me/' + c.whatsapp;
+}
+K.onChange(() => { renderProducts(); renderCart(); renderConfig(); });
+renderProducts(); renderCart(); renderConfig();
+document.fonts && document.fonts.ready.then(sizeHz);
+</script>
+</body>
+</html>

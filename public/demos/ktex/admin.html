@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K-TEX · Gestão</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#060607;--side:#0a0a0b;--panel:#0f0f11;--panel2:#141417;--line:rgba(255,255,255,.08);--text:#ededeb;--muted:#8d8d8a;--green:#9DFF00;--pink:#FF2D87;--amber:#ffb020;--blue:#4da3ff;--r:14px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Archivo',system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+a{color:inherit}
+.mono{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.anton{font-family:'Anton';font-weight:400;letter-spacing:.02em}
+/* login */
+.login{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 50% 30%,rgba(255,45,135,.18),transparent 50%)}
+.login form{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:34px;text-align:center}
+.login img{width:96px;height:96px;border-radius:50%;margin:0 auto 14px;box-shadow:0 0 40px rgba(255,45,135,.4)}
+.login h1{font-family:'Anton';font-weight:400;font-size:34px;letter-spacing:.04em}
+.login p{color:var(--muted);margin:4px 0 22px}
+/* layout */
+.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+aside{background:var(--side);border-right:1px solid var(--line);padding:20px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 10px 22px}
+.brand img{width:38px;height:38px;border-radius:50%}
+.brand b{font-family:'Anton';font-weight:400;font-size:22px;letter-spacing:.05em}
+.brand small{display:block;color:var(--muted);font-size:11px;font-family:'JetBrains Mono';letter-spacing:.1em}
+.navI{display:flex;align-items:center;gap:12px;height:42px;padding:0 12px;border-radius:10px;color:#bdbdba;width:100%;text-align:left;font-size:14px;font-weight:500}
+.navI svg{width:18px;height:18px;flex:none;opacity:.8}
+.navI:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.navI.on{background:rgba(157,255,0,.1);color:var(--green)}
+.navI .badge{margin-left:auto;background:var(--pink);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px}
+aside .bottom{margin-top:auto;display:grid;gap:4px}
+main{padding:28px 34px 60px;min-width:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:26px;flex-wrap:wrap}
+.top h1{font-family:'Anton';font-weight:400;font-size:38px;letter-spacing:.02em;line-height:1}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{height:40px;padding:0 16px;border-radius:10px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+.btn:hover{border-color:rgba(255,255,255,.22)}
+.btn.g{background:var(--green);color:#060607;border-color:var(--green)}
+.btn.g:hover{box-shadow:0 0 22px rgba(157,255,0,.35)}
+.btn.p{background:transparent;border-color:rgba(255,45,135,.5);color:var(--pink)}
+.btn.sm{height:32px;padding:0 10px;font-size:12px;border-radius:8px}
+/* cards */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:18px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.kpi .v{font-family:'Anton';font-size:30px;letter-spacing:.02em;margin-top:8px;line-height:1.1}
+.kpi .s{color:var(--muted);font-size:12px;margin-top:2px}
+.kpi.hl{border-color:rgba(157,255,0,.35);background:linear-gradient(180deg,rgba(157,255,0,.07),var(--panel))}
+.kpi.hl .v{color:var(--green)}
+.cols{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;min-width:0}
+.box h3{font-size:15px;font-weight:600;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+/* table */
+.tblW{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th{text-align:left;font-family:'JetBrains Mono';font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:rgba(255,255,255,.025)}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.st-aguardando{background:rgba(255,176,32,.12);color:var(--amber)}
+.st-pago{background:rgba(157,255,0,.12);color:var(--green)}
+.st-separacao{background:rgba(77,163,255,.12);color:var(--blue)}
+.st-enviado{background:rgba(180,120,255,.14);color:#c09bff}
+.st-entregue{background:rgba(255,255,255,.08);color:#d8d8d5}
+.st-cancelado,.st-recusado{background:rgba(255,45,135,.12);color:var(--pink)}
+.st-pendente{background:rgba(255,176,32,.12);color:var(--amber)}
+.st-aprovado{background:rgba(157,255,0,.12);color:var(--green)}
+.low{color:var(--pink);font-weight:600}
+.muted{color:var(--muted)}
+.tools{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+input,select,textarea{height:40px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0a0b;color:var(--text);padding:0 12px;font:inherit;font-size:14px;outline:none}
+textarea{height:auto;min-height:80px;padding:10px 12px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(157,255,0,.14)}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--green)}
+.search{flex:1;min-width:200px}
+label.f{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#b4b4b1}
+label.f.chk{flex-direction:row;align-items:center;gap:10px;font-size:14px;color:var(--text)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2 .full{grid-column:1/-1}
+/* bars */
+.bars{display:flex;align-items:flex-end;gap:4px;height:180px;padding-top:10px}
+.bars div{flex:1;background:linear-gradient(180deg,var(--green),rgba(157,255,0,.25));border-radius:4px 4px 0 0;min-height:2px;position:relative}
+.bars div:hover{background:var(--pink)}
+.bars div:hover:after{content:attr(data-t);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#000;border:1px solid var(--line);padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap;margin-bottom:4px;z-index:2}
+.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:6px}
+.list .it{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.list .it:last-child{border:0}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(3px);z-index:80;display:none;place-items:center;padding:20px}
+.scrim.on{display:grid}
+.modal{background:#0c0c0e;border:1px solid var(--line);border-radius:18px;width:min(720px,100%);max-height:92vh;overflow:auto;padding:26px}
+.modal h2{font-family:'Anton';font-weight:400;font-size:28px;letter-spacing:.02em;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center}
+.mFoot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.x{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);font-size:14px;font-family:'Archivo'}
+.toast{position:fixed;right:24px;bottom:24px;background:var(--green);color:#060607;font-weight:700;padding:12px 18px;border-radius:10px;z-index:99;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
+.toast.on{opacity:1;transform:none}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.code{font-family:'JetBrains Mono';background:rgba(157,255,0,.1);color:var(--green);padding:2px 8px;border-radius:6px;font-size:12px}
+.info{background:rgba(77,163,255,.08);border:1px solid rgba(77,163,255,.25);color:#b9dcff;border-radius:12px;padding:12px 14px;font-size:13px;margin-bottom:16px}
+.menuT{display:none}
+@media (max-width:980px){
+  .app{grid-template-columns:1fr}
+  aside{position:fixed;left:0;top:0;z-index:70;width:260px;transform:translateX(-100%);transition:transform .3s}
+  aside.on{transform:none;box-shadow:0 0 60px #000}
+  .menuT{display:inline-flex}
+  main{padding:18px 16px 50px}
+  .cols{grid-template-columns:1fr}
+  .grid2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="scrim" id="scrim"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="assets/store.js"></script>
+<script>
+const K = window.KTEX, $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const M = v => K.money(v), D = s => s ? new Date(s).toLocaleDateString('pt-BR') : '—';
+const pill = (st, label) => `<span class="pill st-${st}">${esc(label || K.STATUS[st] || st)}</span>`;
+const ico = {
+  painel:'<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
+  pedidos:'<path d="M6 7h12l-1 13H7z"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/>',
+  produtos:'<path d="M4 8h16v12H4z"/><path d="M3 4h18v4H3z"/>',
+  lotes:'<path d="M4 4h16v6H4zM4 14h16v6H4z"/><path d="M8 7h.01M8 17h.01"/>',
+  clientes:'<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M17 4a4 4 0 0 1 0 8M22 21c0-3-2-5-4-5.5"/>',
+  estudios:'<path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-7h6v7"/>',
+  comissoes:'<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.8 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/>',
+  financeiro:'<path d="M3 20h18"/><path d="M6 16V9M11 16V5M16 16v-4M21 16V8"/>',
+  ajustes:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'
+};
+const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ico[k]}</svg>`;
+const PAGES = [['painel','Painel'],['pedidos','Pedidos'],['produtos','Produtos e estoque'],['lotes','Lotes'],['clientes','Clientes'],['estudios','Estúdios'],['comissoes','Comissões'],['financeiro','Financeiro'],['ajustes','Ajustes']];
+let page = location.hash.slice(1) || 'painel';
+let authed = sessionStorage.getItem('ktex_auth') === '1';
+let tt; const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 2200); };
+
+/* ---------- login ---------- */
+function renderLogin() {
+  $('#root').innerHTML = `<div class="login"><form id="lf"><img src="assets/icon.png" alt=""><h1>K-TEX</h1><p>Área da empresa</p>
+    <label class="f" style="text-align:left">Senha<input type="password" id="pw" autocomplete="current-password" required></label>
+    <p id="le" style="color:var(--pink);min-height:20px;margin:8px 0"></p><button class="btn g" style="width:100%;justify-content:center;height:46px">Entrar</button>
+    <p class="mono" style="margin-top:16px">Senha inicial: ktex2026</p></form></div>`;
+  $('#lf').onsubmit = e => { e.preventDefault(); if ($('#pw').value === K.db.config.adminSenha) { sessionStorage.setItem('ktex_auth', '1'); authed = true; render(); } else $('#le').textContent = 'Senha incorreta'; };
+}
+
+/* ---------- shell ---------- */
+function render() {
+  if (!authed) return renderLogin();
+  const pend = K.db.orders.filter(o => o.status === 'aguardando' || o.status === 'pago').length;
+  const estP = K.db.estudios.filter(e => e.status === 'pendente').length;
+  $('#root').innerHTML = `<div class="app">
+    <aside id="side"><div class="brand"><img src="assets/icon.png" alt=""><div><b>K-TEX</b><small>GESTÃO</small></div></div>
+      ${PAGES.map(([k, l]) => `<button class="navI ${page === k ? 'on' : ''}" data-p="${k}">${svg(k)}${l}${k === 'pedidos' && pend ? `<span class="badge">${pend}</span>` : ''}${k === 'estudios' && estP ? `<span class="badge">${estP}</span>` : ''}</button>`).join('')}
+      <div class="bottom"><a class="navI" href="index.html" target="_blank">↗ Ver loja</a><button class="navI" id="logout">Sair</button></div></aside>
+    <main id="main"></main></div>`;
+  document.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { page = b.dataset.p; location.hash = page; render(); });
+  $('#logout').onclick = () => { sessionStorage.removeItem('ktex_auth'); authed = false; render(); };
+  (VIEWS[page] || VIEWS.painel)($('#main'));
+}
+const topBar = (title, actions = '') => `<div class="top"><div style="display:flex;gap:12px;align-items:center"><button class="btn menuT" onclick="document.getElementById('side').classList.toggle('on')" aria-label="Menu">☰</button><h1>${title}</h1></div><div class="actions">${actions}</div></div>`;
+
+/* ---------- modal genérico ---------- */
+function openModal(html) { $('#modal').innerHTML = html; $('#scrim').classList.add('on'); }
+function closeModal() { $('#scrim').classList.remove('on'); }
+$('#scrim').addEventListener('click', e => { if (e.target.id === 'scrim' || e.target.closest('[data-x]')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+function formModal(title, fields, vals, onSave, extra = '') {
+  openModal(`<h2>${title}<button class="x" data-x aria-label="Fechar">✕</button></h2>${extra}<form id="mf"><div class="grid2">${fields.map(f => {
+    const v = vals[f.k] ?? f.def ?? '';
+    if (f.type === 'checkbox') return `<label class="f chk ${f.full ? 'full' : ''}"><input type="checkbox" name="${f.k}" ${v ? 'checked' : ''}>${f.label}</label>`;
+    if (f.type === 'select') return `<label class="f ${f.full ? 'full' : ''}">${f.label}<select name="${f.k}">${f.options.map(o => { const [ov, ol] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ol)}</option>`; }).join('')}</select></label>`;
+    if (f.type === 'textarea') return `<label class="f full">${f.label}<textarea name="${f.k}">${esc(v)}</textarea></label>`;
+    return `<label class="f ${f.full ? 'full' : ''}">${f.label}<input name="${f.k}" type="${f.type || 'text'}" ${f.type === 'number' ? 'step="any"' : ''} value="${esc(v)}" ${f.req ? 'required' : ''} ${f.ph ? `placeholder="${esc(f.ph)}"` : ''}></label>`;
+  }).join('')}</div><p id="me" style="color:var(--pink);min-height:18px;margin-top:10px"></p><div class="mFoot"><button type="button" class="btn" data-x>Cancelar</button><button class="btn g">Salvar</button></div></form>`);
+  $('#mf').onsubmit = e => { e.preventDefault(); const o = {};
+    fields.forEach(f => { const el = e.target.elements[f.k]; o[f.k] = f.type === 'checkbox' ? el.checked : f.type === 'number' ? Number(el.value) : el.value.trim(); });
+    try { onSave(o); K.commit(); closeModal(); render(); toast('Salvo'); } catch (err) { $('#me').textContent = err.message; } };
+}
+const csv = (name, rows) => { const s = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + s], { type: 'text/csv' })); a.download = name; a.click(); };
+
+/* ---------- views ---------- */
+const VIEWS = {};
+
+VIEWS.painel = el => {
+  const db = K.db, now = new Date(), m0 = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const fin = K.finance(m0, K.today());
+  const paidMonth = db.orders.filter(o => K.PAID.includes(o.status) && o.data >= m0);
+  const ticket = paidMonth.length ? fin.receita / paidMonth.length : 0;
+  const pendCom = K.commissionSummary().reduce((s, c) => s + Math.max(0, c.pendente), 0);
+  const low = db.products.filter(p => p.ativo && p.estoque <= p.estoqueMin);
+  const days = [...Array(30)].map((_, i) => { const d = new Date(now); d.setDate(d.getDate() - 29 + i); const k = d.toISOString().slice(0, 10);
+    return { k, v: db.orders.filter(o => K.PAID.includes(o.status) && o.data.slice(0, 10) === k).reduce((s, o) => s + o.total, 0) }; });
+  const max = Math.max(1, ...days.map(d => d.v));
+  const soon = db.lotes.filter(l => l.validade && (new Date(l.validade) - now) / 864e5 < 120);
+  el.innerHTML = topBar('Painel', `<a class="btn" href="#pedidos" onclick="page='pedidos'">Ver pedidos</a>`) +
+    (db.orders.length ? '' : `<div class="info">Ainda não há pedidos. Para ver o painel funcionando, gere pedidos de exemplo em <b>Ajustes</b>, ou faça uma compra de teste na loja.</div>`) +
+    `<div class="kpis">
+      <div class="kpi hl"><div class="mono">Faturamento · 30 dias</div><div class="v">${M(fin.receita)}</div><div class="s">${fin.vendas} pedidos pagos</div></div>
+      <div class="kpi"><div class="mono">Ticket médio</div><div class="v">${M(ticket)}</div><div class="s">últimos 30 dias</div></div>
+      <div class="kpi"><div class="mono">Lucro estimado</div><div class="v">${M(fin.lucro)}</div><div class="s">receita − custo − comissões − despesas</div></div>
+      <div class="kpi"><div class="mono">Comissões a pagar</div><div class="v" style="color:var(--pink)">${M(pendCom)}</div><div class="s">acumulado pendente</div></div>
+      <div class="kpi"><div class="mono">Aguardando ação</div><div class="v">${db.orders.filter(o => ['aguardando', 'pago', 'separacao'].includes(o.status)).length}</div><div class="s">pedidos para despachar</div></div>
+    </div>
+    <div class="cols">
+      <div class="box"><h3>Vendas · últimos 30 dias <span class="mono">${M(days.reduce((s, d) => s + d.v, 0))}</span></h3>
+        <div class="bars">${days.map(d => `<div style="height:${d.v / max * 100}%" data-t="${D(d.k + 'T12:00')}: ${M(d.v)}"></div>`).join('')}</div>
+        <div class="axis"><span>${D(days[0].k + 'T12:00')}</span><span>hoje</span></div></div>
+      <div class="box"><h3>Alertas</h3><div class="list">
+        ${low.map(p => `<div class="it"><span>Estoque baixo: ${esc(p.nome)} ${esc(p.variacao)}</span><span class="low">${p.estoque} un</span></div>`).join('')}
+        ${soon.map(l => `<div class="it"><span>Lote ${esc(l.codigo)} vence em breve</span><span class="low">${D(l.validade + 'T12:00')}</span></div>`).join('')}
+        ${db.estudios.filter(e => e.status === 'pendente').map(e => `<div class="it"><span>Estúdio aguardando aprovação: ${esc(e.nome)}</span><span class="muted">${esc(e.cidade)}</span></div>`).join('')}
+        ${!low.length && !soon.length && !db.estudios.some(e => e.status === 'pendente') ? '<p class="muted">Tudo em dia.</p>' : ''}
+      </div></div>
+    </div>
+    <div class="box" style="margin-top:14px"><h3>Últimos pedidos</h3>${ordersTable(db.orders.slice(0, 6))}</div>`;
+  bindOrders(el);
+};
+
+function ordersTable(list) {
+  if (!list.length) return '<p class="empty">Nenhum pedido.</p>';
+  const name = id => (K.db.comissionados.find(c => c.id === id) || {}).nome;
+  return `<div class="tblW" style="border:0"><table><thead><tr><th>Pedido</th><th>Data</th><th>Cliente</th><th>Canal</th><th>Vendedor</th><th>Status</th><th class="num">Total</th></tr></thead><tbody>
+  ${list.map(o => `<tr class="click" data-o="${o.id}"><td><b>${o.numero}</b></td><td>${D(o.data)}</td><td>${esc(o.cliente.nome)}<div class="muted">${esc(o.cliente.cidade || '')}${o.cliente.uf ? '/' + esc(o.cliente.uf) : ''}</div></td>
+    <td>${o.canal === 'atacado' ? '<span class="code">ATACADO</span>' : 'Varejo'}</td><td>${esc(name(o.vendedorId) || '—')}</td><td>${pill(o.status)}</td><td class="num"><b>${M(o.total)}</b></td></tr>`).join('')}</tbody></table></div>`;
+}
+function bindOrders(el) { el.querySelectorAll('[data-o]').forEach(r => r.onclick = () => orderModal(r.dataset.o)); }
+
+function orderModal(id) {
+  const o = K.db.orders.find(x => x.id === id), c = o.cliente;
+  const coms = K.orderCommissions(o);
+  openModal(`<h2>Pedido ${o.numero}<button class="x" data-x aria-label="Fechar">✕</button></h2>
+    <div class="grid2">
+      <div class="box"><h3>Cliente</h3><b>${esc(c.nome)}</b><div class="muted">${esc(c.email)} · ${esc(c.tel)}</div><div class="muted">CPF/CNPJ ${esc(c.cpf)}</div>
+        <div style="margin-top:8px">${esc(c.endereco)}<br>${esc(c.cidade)}/${esc(c.uf)} · CEP ${esc(c.cep)}</div>
+        <a class="btn sm" style="margin-top:10px" target="_blank" rel="noopener" href="https://wa.me/55${esc(String(c.tel).replace(/\D/g, ''))}">WhatsApp</a></div>
+      <div class="box"><h3>Itens</h3>${o.itens.map(i => `<div class="list"><div class="it"><span>${i.qtd}× ${esc(i.nome)}</span><span>${M(i.qtd * i.preco)}</span></div></div>`).join('')}
+        <div class="list"><div class="it"><span class="muted">Frete</span><span>${M(o.frete)}</span></div><div class="it"><b>Total</b><b>${M(o.total)}</b></div></div></div>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <label class="f">Status<select id="ost">${Object.entries(K.STATUS).map(([k, l]) => `<option value="${k}" ${k === o.status ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="f">Código de rastreio<input id="ork" value="${esc(o.rastreio)}" placeholder="Ex: AA123456789BR"></label>
+    </div>
+    <div class="box" style="margin-top:12px"><h3>Comissões deste pedido</h3>${coms.length ? coms.map(x => `<div class="list"><div class="it"><span>${esc((K.db.comissionados.find(c => c.id === x.comissionadoId) || {}).nome)}</span><span>${M(x.valor)}</span></div></div>`).join('') : '<p class="muted">Comissões são geradas quando o pedido é marcado como pago.</p>'}</div>
+    <div class="mFoot"><button class="btn" data-x>Fechar</button><button class="btn g" id="osave">Salvar pedido</button></div>`);
+  $('#osave').onclick = () => { o.rastreio = $('#ork').value.trim(); K.setOrderStatus(o.id, $('#ost').value); closeModal(); render(); toast('Pedido atualizado'); };
+}
+
+VIEWS.pedidos = el => {
+  let fs = 'todos', q = '';
+  const draw = () => {
+    const list = K.db.orders.filter(o => (fs === 'todos' || o.status === fs) && (!q || (o.numero + o.cliente.nome + o.cliente.email).toLowerCase().includes(q)));
+    el.querySelector('#ot').innerHTML = ordersTable(list); bindOrders(el);
+  };
+  el.innerHTML = topBar('Pedidos', `<button class="btn" id="exp">Exportar CSV</button><button class="btn g" id="nov">+ Pedido manual</button>`) +
+    `<div class="tools"><input class="search" id="q" placeholder="Buscar por número, nome ou e-mail" aria-label="Buscar pedidos"><select id="fs" aria-label="Filtrar status"><option value="todos">Todos os status</option>${Object.entries(K.STATUS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div><div id="ot"></div>`;
+  el.querySelector('#q').oninput = e => { q = e.target.value.toLowerCase(); draw(); };
+  el.querySelector('#fs').onchange = e => { fs = e.target.value; draw(); };
+  el.querySelector('#exp').onclick = () => csv('pedidos-ktex.csv', [['Pedido', 'Data', 'Cliente', 'Email', 'Cidade', 'UF', 'Canal', 'Status', 'Subtotal', 'Frete', 'Total'], ...K.db.orders.map(o => [o.numero, D(o.data), o.cliente.nome, o.cliente.email, o.cliente.cidade, o.cliente.uf, o.canal, K.STATUS[o.status], o.subtotal, o.frete, o.total])]);
+  el.querySelector('#nov').onclick = manualOrder;
+  draw();
+};
+function manualOrder() {
+  const prods = K.db.products.filter(p => p.ativo);
+  openModal(`<h2>Pedido manual<button class="x" data-x aria-label="Fechar">✕</button></h2>
+    <div class="info">Use para vendas feitas fora do site: venda presencial, por representante ou WhatsApp. O pedido entra no estoque, no financeiro e nas comissões.</div>
+    <form id="mo"><div class="grid2">
+      <label class="f full">Cliente / estúdio<input name="nome" required></label>
+      <label class="f">WhatsApp<input name="tel"></label><label class="f">E-mail<input name="email" type="email"></label>
+      <label class="f">Cidade<input name="cidade"></label><label class="f">UF<input name="uf" maxlength="2"></label>
+      <label class="f">Canal<select name="canal"><option value="varejo">Varejo</option><option value="atacado">Atacado</option></select></label>
+      <label class="f">Vendedor<select name="vend"><option value="">—</option>${K.db.comissionados.filter(c => c.ativo && c.base === 'indicadas').map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></label>
+      <label class="f">Status<select name="status"><option value="pago">Pago</option><option value="aguardando">Aguardando pagamento</option></select></label>
+      <label class="f">Frete (R$)<input name="frete" type="number" step="any" value="0"></label>
+      ${prods.map(p => `<label class="f">${esc(p.nome)} ${esc(p.variacao)} · qtd<input name="q_${p.id}" type="number" min="0" value="0"></label>`).join('')}
+    </div><p id="me" style="color:var(--pink);min-height:18px;margin-top:10px"></p><div class="mFoot"><button type="button" class="btn" data-x>Cancelar</button><button class="btn g">Criar pedido</button></div></form>`);
+  $('#mo').onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+    const itens = prods.filter(p => Number(f['q_' + p.id]) > 0).map(p => ({ produtoId: p.id, nome: p.nome + ' ' + p.variacao, qtd: Number(f['q_' + p.id]), preco: f.canal === 'atacado' ? p.precoAtacado : p.preco }));
+    if (!itens.length) return $('#me').textContent = 'Adicione ao menos um produto';
+    const subtotal = +itens.reduce((s, i) => s + i.qtd * i.preco, 0).toFixed(2), frete = Number(f.frete) || 0;
+    K.db.seq++;
+    const o = { id: K.uid('o'), numero: 'KT' + K.db.seq, data: new Date().toISOString(), cliente: { nome: f.nome, email: f.email, tel: f.tel, cpf: '', cep: '', endereco: '', cidade: f.cidade, uf: (f.uf || '').toUpperCase() },
+      itens, subtotal, frete, total: +(subtotal + frete).toFixed(2), canal: f.canal, estudioId: null, vendedorId: f.vend || null, status: 'aguardando', rastreio: '', pagamento: 'manual', baixaEstoque: false };
+    K.db.orders.unshift(o); K.setOrderStatus(o.id, f.status); closeModal(); render(); toast('Pedido ' + o.numero + ' criado'); };
+}
+
+VIEWS.produtos = el => {
+  const db = K.db;
+  el.innerHTML = topBar('Produtos e estoque', `<button class="btn g" id="np">+ Produto</button>`) +
+    `<div class="tblW"><table><thead><tr><th>Produto</th><th>Categoria</th><th class="num">Varejo</th><th class="num">Atacado</th><th class="num">Estoque</th><th class="num">Vendidos</th><th>Loja</th></tr></thead><tbody>
+    ${db.products.map(p => { const vend = db.orders.filter(o => K.PAID.includes(o.status)).reduce((s, o) => s + o.itens.filter(i => i.produtoId === p.id).reduce((a, i) => a + i.qtd, 0), 0);
+      return `<tr class="click" data-id="${p.id}"><td><b>${esc(p.nome)}</b><div class="muted">${esc(p.variacao)}</div></td><td>${esc(p.categoria)}</td><td class="num">${M(p.preco)}</td><td class="num">${M(p.precoAtacado)}</td>
+      <td class="num ${p.estoque <= p.estoqueMin ? 'low' : ''}">${p.estoque}</td><td class="num">${vend}</td><td>${p.ativo ? pill('aprovado', 'Visível') : pill('cancelado', 'Oculto')}</td></tr>`; }).join('')}</tbody></table></div>
+    <p class="muted" style="margin-top:10px">O estoque baixa sozinho quando um pedido é marcado como pago, e volta se ele for cancelado.</p>`;
+  const fields = [{ k: 'nome', label: 'Nome', req: 1, full: 1 }, { k: 'variacao', label: 'Variação (tamanho)', ph: 'Ex: 30g' }, { k: 'categoria', label: 'Categoria', ph: 'Pomadas, Limpeza, Kits…' },
+    { k: 'preco', label: 'Preço varejo (R$)', type: 'number' }, { k: 'precoAtacado', label: 'Preço atacado (R$)', type: 'number' }, { k: 'estoque', label: 'Estoque atual', type: 'number' }, { k: 'estoqueMin', label: 'Alerta de estoque mínimo', type: 'number' },
+    { k: 'img', label: 'URL da foto (opcional)', full: 1 }, { k: 'descricao', label: 'Descrição', type: 'textarea' }, { k: 'ativo', label: 'Visível na loja', type: 'checkbox', def: true }, { k: 'destaque', label: 'Selo de destaque', type: 'checkbox' }];
+  el.querySelector('#np').onclick = () => formModal('Novo produto', fields, {}, v => db.products.push({ id: K.uid('p'), ...v }));
+  el.querySelectorAll('[data-id]').forEach(r => r.onclick = () => { const p = db.products.find(x => x.id === r.dataset.id); formModal('Editar produto', fields, p, v => Object.assign(p, v)); });
+};
+
+VIEWS.lotes = el => {
+  const db = K.db, pn = id => { const p = db.products.find(x => x.id === id); return p ? p.nome + ' ' + p.variacao : '—'; };
+  el.innerHTML = topBar('Lotes', `<button class="btn g" id="nl">+ Entrada de lote</button>`) +
+    `<div class="info">Registre cada lote fabricado: código, validade e custo por unidade. O custo do último lote de cada produto entra no cálculo de lucro.</div>
+    <div class="tblW"><table><thead><tr><th>Lote</th><th>Produto</th><th class="num">Qtd</th><th>Fabricação</th><th>Validade</th><th class="num">Custo un.</th><th class="num">Custo total</th></tr></thead><tbody>
+    ${db.lotes.length ? db.lotes.map(l => `<tr class="click" data-id="${l.id}"><td><span class="code">${esc(l.codigo)}</span></td><td>${esc(pn(l.produtoId))}</td><td class="num">${l.qtd}</td><td>${D(l.fabricacao + 'T12:00')}</td><td>${D(l.validade + 'T12:00')}</td><td class="num">${M(l.custoUnit)}</td><td class="num">${M(l.custoUnit * l.qtd)}</td></tr>`).join('') : '<tr><td colspan="7" class="empty">Nenhum lote.</td></tr>'}</tbody></table></div>`;
+  const fields = [{ k: 'produtoId', label: 'Produto', type: 'select', options: db.products.map(p => [p.id, p.nome + ' ' + p.variacao]), full: 1 }, { k: 'codigo', label: 'Código do lote', req: 1 }, { k: 'qtd', label: 'Quantidade', type: 'number' },
+    { k: 'fabricacao', label: 'Fabricação', type: 'date', def: K.today() }, { k: 'validade', label: 'Validade', type: 'date' }, { k: 'custoUnit', label: 'Custo por unidade (R$)', type: 'number' }];
+  el.querySelector('#nl').onclick = () => formModal('Entrada de lote', [...fields, { k: 'somar', label: 'Somar quantidade ao estoque do produto', type: 'checkbox', def: true, full: 1 }], {}, v => {
+    const { somar, ...l } = v; db.lotes.unshift({ id: K.uid('l'), ...l }); if (somar) { const p = db.products.find(x => x.id === l.produtoId); if (p) p.estoque += l.qtd; } });
+  el.querySelectorAll('[data-id]').forEach(r => r.onclick = () => { const l = db.lotes.find(x => x.id === r.dataset.id); formModal('Editar lote', fields, l, v => Object.assign(l, v)); });
+};
+
+VIEWS.clientes = el => {
+  const map = {};
+  K.db.orders.forEach(o => { const k = (o.cliente.email || o.cliente.nome).toLowerCase(); const c = map[k] || (map[k] = { ...o.cliente, pedidos: 0, total: 0, ultimo: o.data, canal: o.canal });
+    c.pedidos++; if (K.PAID.includes(o.status)) c.total += o.total; if (o.data > c.ultimo) c.ultimo = o.data; });
+  const list = Object.values(map).sort((a, b) => b.total - a.total);
+  el.innerHTML = topBar('Clientes', `<button class="btn" id="exp">Exportar CSV</button>`) +
+    `<div class="tools"><input class="search" id="q" placeholder="Buscar cliente" aria-label="Buscar cliente"></div>
+    <div class="tblW"><table><thead><tr><th>Cliente</th><th>Contato</th><th>Cidade</th><th>Tipo</th><th class="num">Pedidos</th><th class="num">Total comprado</th><th>Último pedido</th></tr></thead><tbody id="tb"></tbody></table></div>`;
+  const draw = q => el.querySelector('#tb').innerHTML = list.filter(c => !q || (c.nome + c.email).toLowerCase().includes(q)).map(c => `<tr><td><b>${esc(c.nome)}</b></td><td>${esc(c.email)}<div class="muted">${esc(c.tel)}</div></td><td>${esc(c.cidade)}/${esc(c.uf)}</td><td>${c.canal === 'atacado' ? '<span class="code">ESTÚDIO</span>' : 'Varejo'}</td><td class="num">${c.pedidos}</td><td class="num"><b>${M(c.total)}</b></td><td>${D(c.ultimo)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">Nenhum cliente ainda.</td></tr>';
+  el.querySelector('#q').oninput = e => draw(e.target.value.toLowerCase()); draw('');
+  el.querySelector('#exp').onclick = () => csv('clientes-ktex.csv', [['Nome', 'Email', 'Telefone', 'Cidade', 'UF', 'Pedidos', 'Total'], ...list.map(c => [c.nome, c.email, c.tel, c.cidade, c.uf, c.pedidos, c.total])]);
+};
+
+VIEWS.estudios = el => {
+  const db = K.db;
+  el.innerHTML = topBar('Estúdios', `<button class="btn g" id="ne">+ Estúdio</button>`) +
+    `<div class="info">Cadastros vindos do site chegam como <b>pendente</b>. Ao aprovar, o sistema gera um código que libera o preço de atacado no carrinho. Envie o código pelo WhatsApp.</div>
+    <div class="tblW"><table><thead><tr><th>Estúdio</th><th>Contato</th><th>Cidade</th><th>Status</th><th>Código</th><th class="num">Comprado</th><th></th></tr></thead><tbody>
+    ${db.estudios.length ? db.estudios.map(e => { const tot = db.orders.filter(o => o.estudioId === e.id && K.PAID.includes(o.status)).reduce((s, o) => s + o.total, 0);
+      return `<tr><td><b>${esc(e.nome)}</b><div class="muted">${esc(e.instagram || '')}</div></td><td>${esc(e.responsavel)}<div class="muted">${esc(e.tel)}</div></td><td>${esc(e.cidade)}/${esc(e.uf)}</td><td>${pill(e.status, e.status[0].toUpperCase() + e.status.slice(1))}</td>
+      <td>${e.codigo ? `<span class="code">${esc(e.codigo)}</span>` : '—'}</td><td class="num">${M(tot)}</td>
+      <td style="white-space:nowrap">${e.status !== 'aprovado' ? `<button class="btn sm g" data-ap="${e.id}">Aprovar</button>` : `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/55${esc(String(e.tel).replace(/\D/g, ''))}?text=${encodeURIComponent('Olá ' + e.responsavel + '! Seu estúdio foi aprovado na K-TEX. Use o código ' + e.codigo + ' no carrinho do site para ver o preço de atacado.')}">Enviar código</a>`}
+      ${e.status === 'pendente' ? `<button class="btn sm p" data-rc="${e.id}">Recusar</button>` : ''}</td></tr>`; }).join('') : '<tr><td colspan="7" class="empty">Nenhum estúdio cadastrado.</td></tr>'}</tbody></table></div>`;
+  el.querySelectorAll('[data-ap]').forEach(b => b.onclick = () => { const e = db.estudios.find(x => x.id === b.dataset.ap); e.status = 'aprovado';
+    e.codigo = e.codigo || ('EST-' + (e.nome.replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase() || 'KTX') + Math.floor(100 + Math.random() * 900)); K.commit(); render(); toast('Aprovado: ' + e.codigo); });
+  el.querySelectorAll('[data-rc]').forEach(b => b.onclick = () => { db.estudios.find(x => x.id === b.dataset.rc).status = 'recusado'; K.commit(); render(); });
+  el.querySelector('#ne').onclick = () => formModal('Novo estúdio', [{ k: 'nome', label: 'Estúdio', req: 1, full: 1 }, { k: 'responsavel', label: 'Responsável' }, { k: 'tel', label: 'WhatsApp' }, { k: 'cnpj', label: 'CNPJ/CPF' }, { k: 'instagram', label: 'Instagram' }, { k: 'cidade', label: 'Cidade' }, { k: 'uf', label: 'UF' }], {},
+    v => db.estudios.unshift({ id: K.uid('e'), ...v, status: 'pendente', codigo: '', data: new Date().toISOString() }));
+};
+
+VIEWS.comissoes = el => {
+  const sum = K.commissionSummary(), db = K.db;
+  const baseL = { todas: 'Todas as vendas', varejo: 'Vendas de varejo', atacado: 'Vendas de atacado', indicadas: 'Só vendas que indicou' };
+  el.innerHTML = topBar('Comissões', `<button class="btn" onclick="page='ajustes';location.hash='ajustes';render()">Configurar quem ganha</button>`) +
+    `<div class="kpis">
+      <div class="kpi"><div class="mono">Total gerado</div><div class="v">${M(sum.reduce((s, c) => s + c.gerado, 0))}</div></div>
+      <div class="kpi"><div class="mono">Já pago</div><div class="v">${M(sum.reduce((s, c) => s + c.pago, 0))}</div></div>
+      <div class="kpi hl"><div class="mono">A pagar</div><div class="v">${M(sum.reduce((s, c) => s + Math.max(0, c.pendente), 0))}</div></div></div>
+    <div class="tblW"><table><thead><tr><th>Comissionado</th><th>Regra</th><th>Link de indicação</th><th class="num">Vendas</th><th class="num">Gerado</th><th class="num">Pago</th><th class="num">A pagar</th><th></th></tr></thead><tbody>
+    ${sum.map(c => `<tr><td><b>${esc(c.nome)}</b><div class="muted">${esc(c.papel)}${c.ativo ? '' : ' · inativo'}</div></td><td>${c.percentual}% · ${baseL[c.base]}</td>
+      <td>${c.codigo ? `<button class="btn sm" data-cp="${esc(c.codigo)}">Copiar link · ${esc(c.codigo)}</button>` : '<span class="muted">—</span>'}</td>
+      <td class="num">${c.vendas}</td><td class="num">${M(c.gerado)}</td><td class="num">${M(c.pago)}</td><td class="num"><b style="color:${c.pendente > 0 ? 'var(--pink)' : 'inherit'}">${M(c.pendente)}</b></td>
+      <td><button class="btn sm g" data-pay="${c.id}" ${c.pendente > 0 ? '' : 'disabled style="opacity:.4"'}>Pagar</button></td></tr>`).join('')}</tbody></table></div>
+    <div class="box" style="margin-top:14px"><h3>Pagamentos registrados</h3>${db.pagamentosComissao.length ? db.pagamentosComissao.map(p => `<div class="list"><div class="it"><span>${D(p.data + 'T12:00')} · ${esc((db.comissionados.find(c => c.id === p.comissionadoId) || {}).nome)} <span class="muted">${esc(p.obs || '')}</span></span><b>${M(p.valor)}</b></div></div>`).join('') : '<p class="muted">Nenhum pagamento ainda.</p>'}</div>
+    <p class="muted" style="margin-top:10px">A comissão é calculada sobre o subtotal dos produtos (sem frete), apenas em pedidos pagos. Pedido cancelado sai da conta automaticamente.</p>`;
+  el.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => { const url = location.href.replace(/admin\.html.*$/, 'index.html') + '?ref=' + b.dataset.cp; navigator.clipboard?.writeText(url); toast('Link copiado'); });
+  el.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => { const c = sum.find(x => x.id === b.dataset.pay);
+    formModal('Pagar comissão · ' + esc(c.nome), [{ k: 'valor', label: 'Valor (R$)', type: 'number' }, { k: 'data', label: 'Data', type: 'date', def: K.today() }, { k: 'obs', label: 'Observação', ph: 'Ex: Pix 05/10', full: 1 }],
+      { valor: c.pendente }, v => { db.pagamentosComissao.unshift({ id: K.uid('pc'), comissionadoId: c.id, valor: v.valor, data: v.data, obs: v.obs }); });
+  });
+};
+
+VIEWS.financeiro = el => {
+  const db = K.db, now = new Date();
+  let mes = sessionStorage.getItem('ktex_mes') || now.toISOString().slice(0, 7);
+  const [y, m] = mes.split('-').map(Number), from = mes + '-01', to = new Date(y, m, 0).toISOString().slice(0, 10);
+  const f = K.finance(from, to);
+  const lanc = db.financeiro.filter(x => x.data >= from && x.data <= to);
+  el.innerHTML = topBar('Financeiro', `<input type="month" id="mes" value="${mes}" aria-label="Mês"><button class="btn" id="ne">+ Entrada</button><button class="btn g" id="ns">+ Despesa</button>`) +
+    `<div class="kpis">
+      <div class="kpi"><div class="mono">Vendas pagas</div><div class="v">${M(f.receita)}</div><div class="s">${f.vendas} pedidos</div></div>
+      <div class="kpi"><div class="mono">Custo dos produtos</div><div class="v">${M(f.custo)}</div><div class="s">pelo custo dos lotes</div></div>
+      <div class="kpi"><div class="mono">Comissões</div><div class="v">${M(f.comissoes)}</div></div>
+      <div class="kpi"><div class="mono">Despesas</div><div class="v">${M(f.saidas)}</div><div class="s">+ outras entradas ${M(f.outrasEntradas)}</div></div>
+      <div class="kpi hl"><div class="mono">Resultado do mês</div><div class="v" style="color:${f.lucro < 0 ? 'var(--pink)' : 'var(--green)'}">${M(f.lucro)}</div></div></div>
+    <div class="tblW"><table><thead><tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Descrição</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+    ${lanc.length ? lanc.sort((a, b) => b.data.localeCompare(a.data)).map(x => `<tr><td>${D(x.data + 'T12:00')}</td><td>${x.tipo === 'entrada' ? pill('aprovado', 'Entrada') : pill('cancelado', 'Saída')}</td><td>${esc(x.categoria)}</td><td>${esc(x.descricao)}</td><td class="num"><b>${M(x.valor)}</b></td><td><button class="btn sm" data-del="${x.id}">Excluir</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">Nenhum lançamento manual neste mês. As vendas pagas entram automaticamente no resultado.</td></tr>'}</tbody></table></div>`;
+  el.querySelector('#mes').onchange = e => { sessionStorage.setItem('ktex_mes', e.target.value); render(); };
+  const add = tipo => formModal(tipo === 'entrada' ? 'Nova entrada' : 'Nova despesa', [{ k: 'data', label: 'Data', type: 'date', def: K.today() }, { k: 'valor', label: 'Valor (R$)', type: 'number' },
+    { k: 'categoria', label: 'Categoria', type: 'select', options: tipo === 'entrada' ? ['Aporte', 'Outras receitas'] : ['Produção', 'Embalagem', 'Frete', 'Marketing', 'Taxas Mercado Pago', 'Impostos', 'Ferramentas e sistemas', 'Outros'] },
+    { k: 'descricao', label: 'Descrição', full: 1 }], {}, v => db.financeiro.push({ id: K.uid('f'), tipo, ...v }));
+  el.querySelector('#ne').onclick = () => add('entrada'); el.querySelector('#ns').onclick = () => add('saida');
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { db.financeiro = db.financeiro.filter(x => x.id !== b.dataset.del); K.commit(); render(); });
+};
+
+VIEWS.ajustes = el => {
+  const db = K.db, c = db.config;
+  const baseL = { todas: 'Todas as vendas', varejo: 'Vendas de varejo', atacado: 'Vendas de atacado', indicadas: 'Só vendas que indicou (link/código)' };
+  el.innerHTML = topBar('Ajustes') + `
+    <div class="box"><h3>Quem ganha comissão <button class="btn sm g" id="nc">+ Comissionado</button></h3>
+      <p class="muted" style="margin-bottom:12px">Defina quem recebe, quanto (%) e sobre quais vendas. Quem tem código ganha um link de indicação e pode ser escolhido nos pedidos manuais.</p>
+      <div class="tblW" style="border:0"><table><thead><tr><th>Nome</th><th>Papel</th><th class="num">%</th><th>Sobre</th><th>Código</th><th>Status</th></tr></thead><tbody>
+      ${db.comissionados.map(x => `<tr class="click" data-c="${x.id}"><td><b>${esc(x.nome)}</b></td><td>${esc(x.papel)}</td><td class="num">${x.percentual}%</td><td>${baseL[x.base]}</td><td>${x.codigo ? `<span class="code">${esc(x.codigo)}</span>` : '—'}</td><td>${x.ativo ? pill('aprovado', 'Ativo') : pill('cancelado', 'Inativo')}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="box" style="margin-top:14px"><h3>Loja</h3><form id="cf"><div class="grid2">
+      <label class="f">WhatsApp da empresa (com DDI e DDD)<input name="whatsapp" value="${esc(c.whatsapp)}"></label>
+      <label class="f">Instagram (sem @)<input name="instagram" value="${esc(c.instagram)}"></label>
+      <label class="f">Frete fixo varejo (R$)<input name="freteFixo" type="number" step="any" value="${c.freteFixo}"></label>
+      <label class="f">Frete grátis acima de (R$)<input name="freteGratisAcima" type="number" step="any" value="${c.freteGratisAcima}"></label>
+      <label class="f">Pedido mínimo de atacado (R$)<input name="pedidoMinimoAtacado" type="number" step="any" value="${c.pedidoMinimoAtacado}"></label>
+      <label class="f">Endereço do pagamento Mercado Pago<input name="mpEndpoint" value="${esc(c.mpEndpoint)}" placeholder="Preenchido na etapa de integração"></label>
+      <label class="f">Nova senha do painel<input name="senha" type="password" placeholder="Deixe em branco para manter" autocomplete="new-password"></label>
+    </div><div class="mFoot"><button class="btn g">Salvar ajustes</button></div></form></div>
+    <div class="box" style="margin-top:14px"><h3>Dados</h3><div class="actions">
+      <button class="btn" id="demo">Gerar pedidos de exemplo</button><button class="btn" id="bk">Baixar backup</button>
+      <label class="btn" style="cursor:pointer">Restaurar backup<input type="file" id="rs" accept=".json" hidden></label><button class="btn p" id="rst">Apagar tudo e recomeçar</button></div></div>`;
+  const cf = [{ k: 'nome', label: 'Nome', req: 1, full: 1 }, { k: 'papel', label: 'Papel', ph: 'Representante, Gestão…' }, { k: 'percentual', label: 'Comissão (%)', type: 'number' },
+    { k: 'base', label: 'Sobre quais vendas', type: 'select', options: Object.entries(baseL) }, { k: 'codigo', label: 'Código de indicação', ph: 'Ex: JOAO10 (opcional)' }, { k: 'ativo', label: 'Ativo', type: 'checkbox', def: true }];
+  const clean = v => { v.codigo = (v.codigo || '').toUpperCase().replace(/\s/g, ''); if (v.codigo && db.comissionados.some(x => x.codigo === v.codigo && x.nome !== v.nome)) throw new Error('Este código já está em uso'); return v; };
+  el.querySelector('#nc').onclick = () => formModal('Novo comissionado', cf, {}, v => db.comissionados.push({ id: K.uid('c'), ...clean(v) }));
+  el.querySelectorAll('[data-c]').forEach(r => r.onclick = () => { const x = db.comissionados.find(y => y.id === r.dataset.c); formModal('Editar comissionado', cf, x, v => Object.assign(x, clean(v))); });
+  el.querySelector('#cf').onsubmit = e => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target));
+    Object.assign(c, { whatsapp: f.whatsapp.replace(/\D/g, ''), instagram: f.instagram.replace('@', ''), freteFixo: +f.freteFixo, freteGratisAcima: +f.freteGratisAcima, pedidoMinimoAtacado: +f.pedidoMinimoAtacado, mpEndpoint: f.mpEndpoint.trim() });
+    if (f.senha) c.adminSenha = f.senha; K.commit(); toast('Ajustes salvos'); };
+  el.querySelector('#bk').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' })); a.download = 'ktex-backup-' + K.today() + '.json'; a.click(); };
+  el.querySelector('#rs').onchange = async e => { try { const d = JSON.parse(await e.target.files[0].text()); if (!d.config) throw 0; Object.keys(db).forEach(k => delete db[k]); Object.assign(db, d); K.commit(); render(); toast('Backup restaurado'); } catch (err) { toast('Arquivo inválido'); } };
+  el.querySelector('#rst').onclick = () => { if (confirm('Apagar todos os dados do painel? Isso não pode ser desfeito.')) { K.reset(); render(); } };
+  el.querySelector('#demo').onclick = () => { demo(); render(); toast('Pedidos de exemplo criados'); };
+};
+
+/* ---------- dados de exemplo ---------- */
+function demo() {
+  const db = K.db, nomes = ['Ana Ribeiro', 'Bruno Costa', 'Carla Mendes', 'Diego Alves', 'Elis Rocha', 'Felipe Nunes', 'Gabi Torres', 'Hugo Lima', 'Iara Santos', 'João Pires'];
+  const cid = [['Curitiba', 'PR'], ['São Paulo', 'SP'], ['Florianópolis', 'SC'], ['Porto Alegre', 'RS'], ['Belo Horizonte', 'MG']];
+  if (!db.comissionados.some(c => c.codigo === 'RAFA10')) db.comissionados.push({ id: K.uid('c'), nome: 'Rafa (exemplo)', papel: 'Representante', percentual: 8, base: 'indicadas', codigo: 'RAFA10', ativo: true });
+  if (!db.estudios.length) db.estudios.push({ id: K.uid('e'), nome: 'Black Ink Studio (exemplo)', responsavel: 'Marcos', tel: '41999990000', cnpj: '00.000.000/0001-00', instagram: '@blackink', cidade: 'Curitiba', uf: 'PR', status: 'aprovado', codigo: 'EST-BLAC123', data: new Date().toISOString() });
+  db.products.forEach(p => p.estoque += 150);
+  const rep = db.comissionados.find(c => c.codigo === 'RAFA10'), est = db.estudios.find(e => e.status === 'aprovado');
+  const sts = ['entregue', 'entregue', 'enviado', 'pago', 'separacao', 'aguardando', 'entregue', 'cancelado'];
+  for (let i = 0; i < 28; i++) {
+    const d = new Date(); d.setDate(d.getDate() - Math.floor(Math.random() * 29)); d.setHours(10 + i % 10);
+    const atac = i % 7 === 0, ps = db.products.filter(p => p.ativo), n = 1 + Math.floor(Math.random() * 2);
+    const itens = [...Array(n)].map(() => { const p = ps[Math.floor(Math.random() * ps.length)]; return { produtoId: p.id, nome: p.nome + ' ' + p.variacao, qtd: atac ? 10 + Math.floor(Math.random() * 10) : 1 + Math.floor(Math.random() * 2), preco: atac ? p.precoAtacado : p.preco }; });
+    const subtotal = +itens.reduce((s, x) => s + x.qtd * x.preco, 0).toFixed(2), frete = atac || subtotal >= db.config.freteGratisAcima ? 0 : db.config.freteFixo;
+    const [ci, uf] = cid[i % cid.length], nm = atac ? est.nome : nomes[i % nomes.length];
+    db.seq++;
+    const o = { id: K.uid('o'), numero: 'KT' + db.seq, data: d.toISOString(), cliente: { nome: nm, email: nm.split(' ')[0].toLowerCase() + '@exemplo.com', tel: '41999990000', cpf: '000.000.000-00', cep: '80000-000', endereco: 'Rua Exemplo, 100', cidade: ci, uf },
+      itens, subtotal, frete, total: +(subtotal + frete).toFixed(2), canal: atac ? 'atacado' : 'varejo', estudioId: atac ? est.id : null, vendedorId: i % 4 === 0 ? rep.id : null, status: 'aguardando', rastreio: '', pagamento: 'mercadopago', baixaEstoque: false };
+    db.orders.push(o); K.setOrderStatus(o.id, sts[i % sts.length]);
+  }
+  db.orders.sort((a, b) => b.data.localeCompare(a.data));
+  db.financeiro.push({ id: K.uid('f'), tipo: 'saida', categoria: 'Marketing', descricao: 'Anúncios Instagram (exemplo)', valor: 350, data: K.today() });
+  K.commit();
+}
+
+K.onChange(() => { if (!$('#scrim').classList.contains('on')) render(); });
+addEventListener('hashchange', () => { page = location.hash.slice(1) || 'painel'; render(); });
+render();
+</script>
+</body>
+</html>
