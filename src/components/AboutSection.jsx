@@ -35,14 +35,16 @@ function Heading({ lines }) {
       {lines.map((line, li) => (
         <span key={li} className="block text-[clamp(2.1rem,4.6vw,4.4rem)]">
           {line.split(" ").map((w, i) => (
-            <span key={i} className="mr-[0.22em] inline-block overflow-hidden pb-[0.08em] align-bottom">
-              <span
-                data-word
-                className={`inline-block ${li === lines.length - 1 ? "text-outline-neon" : ""}`}
-              >
-                {w}
-              </span>
-            </span>
+            <React.Fragment key={i}>
+              <span className="inline-block overflow-hidden pb-[0.08em] align-bottom">
+                <span
+                  data-word
+                  className={`inline-block ${li === lines.length - 1 ? "text-outline-neon" : ""}`}
+                >
+                  {w}
+                </span>
+              </span>{" "}
+            </React.Fragment>
           ))}
         </span>
       ))}

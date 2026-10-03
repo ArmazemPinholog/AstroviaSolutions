@@ -62,11 +62,13 @@ export default function HighlightSection() {
             {["Duas lobas.", "Uma vitrine com alma."].map((line, li) => (
               <span key={li} className="block text-[clamp(2.1rem,5vw,4.4rem)]">
                 {line.split(" ").map((w, i) => (
-                  <span key={i} className="mr-[0.22em] inline-block overflow-hidden pb-[0.08em] align-bottom">
-                    <span data-word className={`inline-block ${li === 1 ? "text-[#E12424]" : ""}`}>
-                      {w}
-                    </span>
-                  </span>
+                  <React.Fragment key={i}>
+                    <span className="inline-block overflow-hidden pb-[0.08em] align-bottom">
+                      <span data-word className={`inline-block ${li === 1 ? "text-[#E12424]" : ""}`}>
+                        {w}
+                      </span>
+                    </span>{" "}
+                  </React.Fragment>
                 ))}
               </span>
             ))}

@@ -79,7 +79,7 @@ export default function Hero() {
               className="glow-neon block text-[clamp(3.4rem,13.5vw,13rem)] text-white"
             >
               ASTROVIA
-            </motion.span>
+            </motion.span>{" "}
             <motion.span
               custom={2}
               variants={reveal}
@@ -123,14 +123,15 @@ export default function Hero() {
                 Projetos no ar
               </p>
               <p className="mt-2 font-display text-3xl text-white">
-                0<span className="text-[#22d3ee]">5</span>
+                {String(PROJECTS.length).padStart(2, "0").slice(0, -1)}
+                <span className="text-[#22d3ee]">{String(PROJECTS.length).slice(-1)}</span>
                 <span className="ml-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-titanium">
                   / online agora
                 </span>
               </p>
               {/* um segmento por projeto real do portfólio abaixo */}
               <div className="mt-3 flex gap-1">
-                {[0, 1, 2, 3, 4].map((i) => (
+                {PROJECTS.map((_, i) => (
                   <motion.span
                     key={i}
                     initial={{ scaleX: 0, opacity: 0 }}

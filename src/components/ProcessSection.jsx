@@ -77,9 +77,11 @@ export default function ProcessSection() {
         className="max-w-5xl font-display text-[clamp(1.6rem,3.6vw,3.1rem)] font-medium leading-[1.12] tracking-[-0.03em] text-white"
       >
         {STATEMENT.split(" ").map((w, i) => (
-          <span key={i} data-lit className="inline-block pr-[0.26em]">
-            {w}
-          </span>
+          <React.Fragment key={i}>
+            <span data-lit className="inline-block">
+              {w}
+            </span>{" "}
+          </React.Fragment>
         ))}
       </p>
 

@@ -39,14 +39,16 @@ export default function ContactSection() {
           ].map((line, li) => (
             <span key={li} className="block text-[clamp(3rem,11vw,10rem)]">
               {line.map((w) => (
-                <span key={w} className="mr-[0.2em] inline-block overflow-hidden pb-[0.06em] align-bottom">
-                  <span
-                    data-word
-                    className={`inline-block ${li === 1 ? "text-outline-neon" : "text-white"}`}
-                  >
-                    {w}
-                  </span>
-                </span>
+                <React.Fragment key={w}>
+                  <span className="inline-block overflow-hidden pb-[0.06em] align-bottom">
+                    <span
+                      data-word
+                      className={`inline-block ${li === 1 ? "text-outline-neon" : "text-white"}`}
+                    >
+                      {w}
+                    </span>
+                  </span>{" "}
+                </React.Fragment>
               ))}
             </span>
           ))}

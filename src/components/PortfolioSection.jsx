@@ -157,14 +157,17 @@ export default function PortfolioSection() {
       <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
         <h2 data-words className="font-display font-medium leading-[0.9] tracking-[-0.05em]">
           {["PORTFÓLIO", "VIVO"].map((w, i) => (
-            <span key={w} className="mr-5 inline-block overflow-hidden pb-2 align-bottom">
-              <span
-                data-word
-                className={`inline-block text-[clamp(2.6rem,8vw,6.5rem)] ${i === 1 ? "text-outline-neon" : "text-white"}`}
-              >
-                {w}
+            <React.Fragment key={w}>
+              <span className="mr-5 inline-block overflow-hidden pb-2 align-bottom">
+                <span
+                  data-word
+                  className={`inline-block text-[clamp(2.6rem,8vw,6.5rem)] ${i === 1 ? "text-outline-neon" : "text-white"}`}
+                >
+                  {w}
+                </span>
               </span>
-            </span>
+              {i === 0 && <span className="sr-only"> </span>}
+            </React.Fragment>
           ))}
         </h2>
         <p data-reveal className="max-w-sm text-sm leading-relaxed text-titanium">
