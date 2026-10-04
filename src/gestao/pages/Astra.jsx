@@ -62,6 +62,17 @@ const loja = {
   ouvintes: new Set(),
 };
 const avisar = () => loja.ouvintes.forEach((f) => f());
+// a Astra mexeu em dados (leads, rascunhos, regras): as abas e a sala recarregam
+const MUDOU = "astra:mudou";
+function useAoMudar(recarregar) {
+  useEffect(() => {
+    const f = () => recarregar();
+    window.addEventListener(MUDOU, f);
+    const vis = () => document.visibilityState === "visible" && recarregar();
+    document.addEventListener("visibilitychange", vis);
+    return () => { window.removeEventListener(MUDOU, f); document.removeEventListener("visibilitychange", vis); };
+  }, [recarregar]);
+}
 
 const ESPERA = ["Consultando a sala…", "Cruzando funil, projetos e financeiro…", "Organizando a resposta…"];
 
@@ -118,6 +129,7 @@ function Orb({ estado, nivelRef, size = 168 }) {
 
 /* ---------- conversa ---------- */
 export function Conversa({ modo, compacto = false }) {
+  const g = useG();
   const [, redesenhar] = useState(0);
   const slot = loja[modo];
   const msgs = slot.msgs || [];
@@ -182,6 +194,10 @@ export function Conversa({ modo, compacto = false }) {
         ? { modo: "dono", ...(audio ? { audio } : { mensagem: txt }) }
         : { sessao: loja.cliente.sessao, ...(audio ? { audio } : { mensagem: txt }) };
       const d = await astra(body);
+      if (d.acoes?.length) {
+        window.dispatchEvent(new Event(MUDOU));
+        g?.load?.().catch(() => {});
+      }
       if (d.transcricao) setMsgs((m) => [...m, { de: "eu", txt: "🎙 " + d.transcricao }]);
       setEstado("falando");
       const partes = d.partes?.length ? d.partes : d.resposta ? [d.resposta] : [];
@@ -543,6 +559,7 @@ function Aprovar() {
     setLista((data || []).filter((a) => a.gestao_prospects && !vistos.has(a.prospect_id) && vistos.add(a.prospect_id)));
   }, []);
   useEffect(() => { load(); }, [load]);
+  useAoMudar(load);
 
   const enviar = async (a) => {
     const p = a.gestao_prospects;
@@ -631,6 +648,7 @@ function Resultados() {
     setPrefs({ todos: cfg.data?.prefs || {}, ativa: r.ativa !== false, meta: r.meta ?? 10, nota_min: r.nota_min ?? 40, followups: r.followups !== false });
   }, [dias]);
   useEffect(() => { carregar(); }, [carregar]);
+  useAoMudar(carregar);
   // enquanto a rotina roda, atualiza sozinho
   useEffect(() => {
     if (rotinas[0]?.status !== "rodando" && !rodando) return;

@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
       const audio = corpoJson.audio;
       if (audio?.dados && /^audio\/(webm|ogg|mp4|mpeg|wav|x-m4a|aac)/.test(String(audio.tipo)) && String(audio.dados).length <= 2_000_000) {
         transcricao = await transcrever(Uint8Array.from(atob(String(audio.dados)), (ch) => ch.charCodeAt(0)), String(audio.tipo)).catch(() => "");
-        if (transcricao && transcricao !== "[sem fala]") texto = transcricao;
+        if (transcricao && transcricao !== "[sem fala]" && /\p{L}{2,}/u.test(transcricao)) texto = transcricao;
       }
       if (!texto) return json(req, { erro: "mensagem vazia" }, 400);
       const r = await mestre(limpar(corpoJson.tenant, 60) || "astrovia", texto, { db: membro.db, auth: membro.auth, perfilId: membro.perfilId, nomeDono: membro.nome });

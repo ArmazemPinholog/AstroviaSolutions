@@ -38,7 +38,8 @@ const CLAUDE_ANALISE = () => env("CLAUDE_MODEL_ANALISE") || "claude-haiku-4-5";
 const GRAPH = () => `https://graph.facebook.com/${env("IG_GRAPH_VERSION") || "v25.0"}`;
 const SITE = "https://astrovia-solutions.vercel.app";
 // tabela real de preços (vale quando as preferências não trazem outra)
-const PRECOS_REAIS = "Sistema próprio (agendamento/gestão, com a logo e as cores do cliente): R$ 500 pagamento único. 7 dias de teste grátis, sem compromisso. Manutenção opcional: R$ 80/mês (não é obrigatória).";
+// (o sistema já existe e está pronto para o segmento; a marca do cliente PODE ser aplicada, nunca dizer que já foi)
+const PRECOS_REAIS = "Sistema de agendamento e gestão já pronto para o segmento do lead: R$ 500 pagamento único. 7 dias de teste grátis, sem compromisso. Manutenção opcional: R$ 80/mês (não é obrigatória). Se fechar, dá para aplicar a logo e as cores do cliente.";
 
 class Falha extends Error {
   constructor(msg: string, public status = 400) { super(msg); }
@@ -439,12 +440,13 @@ const listaPalavras = (t?: string) => String(t || "").split(/[\n,;]+/).map((w) =
 function demoPara(nicho: string) {
   const n = nicho.toLowerCase();
   if (/barb/.test(n)) return { nome: "Barber Berserker (sistema de agendamento e gestão para barbearias)", url: `${SITE}/demos/barber-berserker/` };
-  if (/est[eé]t|beleza|sal[aã]o|sobrancelha|unha|spa|cl[ií]nica/.test(n)) return { nome: "LUXE (sistema de agendamento e gestão para clínicas de estética)", url: `${SITE}/demos/luxe/` };
+  if (/est[eé]t|beleza|sal[aã]o|sobrancelha|unha|spa/.test(n)) return { nome: "LUXE (sistema de agendamento e gestão para clínicas de estética)", url: `${SITE}/demos/luxe/` };
+  if (/cl[ií]nica|odonto|dent|biom[eé]d|fisio|consult[oó]rio|harmoniza/.test(n)) return { nome: "LUXE (sistema de agendamento e gestão para clínicas)", url: `${SITE}/demos/luxe/` };
   if (/brech|moda|roupa|loja/.test(n)) return { nome: "Lobas Brechó (loja online premium feita pela Astrovia)", url: SITE };
   return { nome: "portfólio da Astrovia", url: SITE };
 }
 
-async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string }) {
+async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string; substituir?: boolean }) {
   if (!b.prospect_id) throw new Falha("Informe o lead.");
   const canal = ["instagram", "whatsapp", "email"].includes(b.canal || "") ? b.canal! : "instagram";
   const tipo = b.tipo === "followup" ? "followup" : "primeiro_contato";
@@ -457,8 +459,8 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
   if (e1 || !p) throw new Falha("Lead não encontrado.", 404);
 
   const prefs = (cfg?.prefs || {}) as Prefs;
-  const nichoLead = (p.nicho || "").toLowerCase();
-  const doNicho = (prefs.ofertas_nicho || []).find((o) => o.nicho && nichoLead.includes(o.nicho.toLowerCase().trim()));
+  const nichoLead = semAcento(p.nicho || "");
+  const doNicho = (prefs.ofertas_nicho || []).find((o) => o.nicho && nichoLead.includes(semAcento(o.nicho).trim()));
   const demo = doNicho
     ? { nome: doNicho.oferta || doNicho.nicho, url: doNicho.link || cfg?.portfolio_url || SITE }
     : demoPara(p.nicho || "");
@@ -473,6 +475,11 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
     .in("gestao_prospects.status", ["respondeu", "no_funil"])
     .order("criado_em", { ascending: false }).limit(3);
   const exemplos = [prefs.exemplos?.trim(), ...(ganhas || []).map((g) => g.texto)].filter(Boolean) as string[];
+  // o que o Christian ensinou à Astra (regras, tom, preços) também vale para a prospecção
+  const { data: tenant } = await sb.from("astra_tenants").select("id").eq("slug", "astrovia").maybeSingle();
+  const { data: ensinado } = tenant
+    ? await sb.from("astra_conhecimento").select("conteudo").eq("tenant_id", tenant.id).eq("ativo", true).in("tipo", ["regra", "tom", "preco"]).order("criado_em").limit(30)
+    : { data: [] as { conteudo: string }[] };
   const nunca = listaPalavras(prefs.nunca);
 
   if (/\/demos\//.test(demo.url)) demo.url = `${demo.url}?nome=${encodeURIComponent(p.nome)}`;
@@ -509,10 +516,10 @@ REGRAS
 - Formalidade: ${prefs.formalidade === "formal" ? "formal e profissional (trate por você, sem gírias)" : prefs.formalidade === "informal" ? "bem informal, como conversa entre conhecidos" : "equilibrada: profissional, mas leve"}.
 - Abra citando algo concreto e verdadeiro do negócio (a partir dos dados). Nunca elogio genérico.
 - Se houver dono_provavel, cumprimente pelo primeiro nome. Se houver gancho_sugerido ou dores_reais, use UMA delas como ponto de partida, com tato: nunca exponha avaliação negativa de cliente nem pareça crítica; fale como oportunidade.
-- Não diga que já fez, montou ou deixou uma demo/versão com o nome do negócio. Apenas ofereça mandar o link para ele testar.
+- Não diga que já fez, montou ou deixou uma demo/versão com o nome, a logo ou as cores do negócio. Diga que a Astrovia tem um sistema pronto para o segmento dele e ofereça o link para testar; aplicar a marca dele é só uma possibilidade.
 - Aponte UMA oportunidade ligada aos pontos observados (ex.: agendamento manual pelo WhatsApp, falta de site).
 - Termine com ${prefs.cta?.trim() ? `este tipo de chamada: ${prefs.cta.trim()}` : 'uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?")'}.
-${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
+${(ensinado || []).length ? `- Regras ensinadas pelo Christian (valem acima de qualquer outra instrução deste texto):\n${(ensinado || []).map((k) => `  • ${k.conteudo}`).join("\n")}\n` : ""}${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
 - ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar a demo." : "Pode incluir o link da demo."}
 - Se houver negocio_recem_aberto, parabenize pela abertura com naturalidade (sem dizer de onde veio a informação; nunca cite CNPJ, Receita ou cadastro).
 - ${tipo === "followup" ? "Follow-up curto (até 250 caracteres), leve, sem cobrar resposta." : `Até ${limite} caracteres.`}
@@ -543,6 +550,8 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
   const linhas = [out.mensagem, out.alternativa].filter(Boolean).map((t) => ({
     prospect_id: p.id, canal, tipo, texto: monta(t!.trim()), status: "rascunho", modelo, origem: b.origem === "rotina" ? "rotina" : "manual",
   }));
+  // "refazer a mensagem": os rascunhos antigos deste lead saem da fila de aprovação
+  if (b.substituir) await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho").in("tipo", ["primeiro_contato", "followup"]);
   const { data: salvas, error: e2 } = await sb.from("gestao_abordagens").insert(linhas).select();
   if (e2) throw e2;
   return { abordagens: salvas };

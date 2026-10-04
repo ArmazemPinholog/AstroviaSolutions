@@ -39,7 +39,7 @@ export const ferramentasProspeccao = [
   {
     name: "preparar_abordagem",
     description:
-      "Escreve a primeira mensagem (ou o follow-up) para um lead e deixa em RASCUNHO na aba Prospecção para o Christian aprovar e enviar. Nunca diga que a mensagem foi enviada.",
+      "Escreve (ou REESCREVE) a primeira mensagem ou o follow-up de um lead e deixa em RASCUNHO em Aprovar envios. Se o lead já tinha rascunho, o antigo é substituído pelo novo. Use também para 'refazer/atualizar a mensagem' com uma instrução. Nunca diga que a mensagem foi enviada.",
     parameters: {
       type: "object",
       properties: {
@@ -62,6 +62,62 @@ export const ferramentasProspeccao = [
     description:
       "Roda agora a rotina diária de prospecção (a mesma que roda sozinha toda manhã): garimpa, investiga e deixa leads e follow-ups em rascunho em Aprovar envios, até a meta do dia. Só use quando ele pedir.",
     parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "editar_mensagem",
+    description:
+      "Troca o texto do rascunho de um lead por um texto exato (quando o Christian ditar a mensagem ou pedir um ajuste pontual que você mesma reescreveu). As outras versões desse lead saem da fila. Continua em rascunho para ele aprovar.",
+    parameters: { type: "object", properties: { prospect_id: { type: "string" }, texto: { type: "string" } }, required: ["prospect_id", "texto"] },
+  },
+  {
+    name: "descartar_rascunhos",
+    description: "Tira mensagens da fila de Aprovar envios (marca como descartadas). Passe os prospect_ids, ou todos=true para limpar a fila inteira. O lead continua salvo.",
+    parameters: {
+      type: "object",
+      properties: { prospect_ids: { type: "array", items: { type: "string" } }, todos: { type: "boolean" } },
+    },
+  },
+  {
+    name: "descartar_leads",
+    description:
+      "Exclui leads que não servem: marca como descartados (somem das listas e da rotina, e não voltam em garimpos futuros) e tira os rascunhos deles da fila. Só mexe em leads ainda não abordados. Passe prospect_ids, ou nicho (ex.: barbearia), ou todos_novos=true. Confirme com o Christian antes de usar todos_novos.",
+    parameters: {
+      type: "object",
+      properties: {
+        prospect_ids: { type: "array", items: { type: "string" } },
+        nicho: { type: "string" },
+        todos_novos: { type: "boolean" },
+        motivo: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "ver_regras_prospeccao",
+    description: "Mostra as regras que o gerador de mensagens segue (sempre, nunca, chamada final, tamanho, emoji, formalidade, exemplo) e a configuração da rotina diária (meta, nichos, cidade, nota mínima).",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "ajustar_regras_prospeccao",
+    description:
+      "Ajusta as regras das mensagens de prospecção e a rotina diária quando o Christian pedir (ex.: 'pare de falar de logo', 'procure só clínicas', '15 leads por dia'). Mande só os campos que mudam. sempre/nunca/extra substituem o texto inteiro do campo: leia antes com ver_regras_prospeccao e reescreva preservando o que continua valendo.",
+    parameters: {
+      type: "object",
+      properties: {
+        sempre: { type: "string" },
+        nunca: { type: "string" },
+        cta: { type: "string", description: "Como terminar a mensagem" },
+        extra: { type: "string" },
+        exemplo: { type: "string", description: "Mensagem modelo no estilo certo" },
+        tamanho: { type: "string", enum: ["curta", "media", "longa"] },
+        emoji: { type: "string", enum: ["nenhum", "um"] },
+        formalidade: { type: "string", enum: ["informal", "equilibrada", "formal"] },
+        nichos_rotina: { type: "array", items: { type: "string" }, description: "Tipos de negócio que a rotina garimpa, em ordem" },
+        meta_diaria: { type: "integer" },
+        nota_minima: { type: "integer" },
+        rotina_ativa: { type: "boolean" },
+        cidade: { type: "string" },
+      },
+    },
   },
   {
     name: "abordagens_pendentes",
@@ -146,9 +202,10 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
         canal: ["whatsapp", "instagram", "email"].includes(a.canal) ? a.canal : "whatsapp",
         tipo: a.tipo === "followup" ? "followup" : "primeiro_contato",
         instrucao: a.instrucao ? limpar(a.instrucao, 500) : undefined,
+        substituir: true,
       });
       if (d.erro) return d;
-      return { status: "rascunho, aguardando aprovação na aba Prospecção", mensagens: (d.abordagens ?? []).map((x: any) => x.texto).slice(0, 2) };
+      return { status: "rascunho em Aprovar envios (o antigo, se havia, foi substituído)", mensagens: (d.abordagens ?? []).map((x: any) => x.texto).slice(0, 2) };
     }
     case "resultados_prospeccao": {
       const dias = Math.min(Math.max(Number(a.dias) || 7, 1), 90);
@@ -183,6 +240,73 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
       const d: any = await agente(auth, { acao: "rotina" });
       if (d.erro) return d;
       return { ok: true, nota: "Rotina iniciada em segundo plano. Leva alguns minutos; os rascunhos aparecem em Aprovar envios e eu aviso aqui quando terminar." };
+    }
+    case "editar_mensagem": {
+      const id = uuid(a.prospect_id), texto = limpar(a.texto, 1500);
+      if (!id || texto.length < 10) return { erro: "lead ou texto inválido" };
+      const { data: rasc } = await db.from("gestao_abordagens").select("id, canal, tipo").eq("prospect_id", id).eq("status", "rascunho")
+        .in("tipo", ["primeiro_contato", "followup"]).order("criado_em", { ascending: false });
+      if (!rasc?.length) return { erro: "esse lead não tem rascunho; use preparar_abordagem" };
+      const { error } = await db.from("gestao_abordagens").update({ texto, modelo: "editado pela Astra" }).eq("id", rasc[0].id);
+      if (error) return { erro: "não consegui salvar" };
+      const outros = rasc.slice(1).map((r) => r.id);
+      if (outros.length) await db.from("gestao_abordagens").update({ status: "descartada" }).in("id", outros);
+      return { ok: true, nota: "texto trocado; continua em rascunho para aprovação" };
+    }
+    case "descartar_rascunhos": {
+      const ids = (Array.isArray(a.prospect_ids) ? a.prospect_ids : []).map(uuid).filter(Boolean).slice(0, 100) as string[];
+      if (!ids.length && a.todos !== true) return { erro: "diga quais leads (prospect_ids) ou todos=true" };
+      let q = db.from("gestao_abordagens").update({ status: "descartada" }).eq("status", "rascunho").in("tipo", ["primeiro_contato", "followup", "resposta"]);
+      if (ids.length) q = q.in("prospect_id", ids);
+      const { data, error } = await q.select("id");
+      return error ? { erro: "não consegui descartar" } : { ok: true, mensagens_descartadas: data?.length ?? 0 };
+    }
+    case "descartar_leads": {
+      const ids = (Array.isArray(a.prospect_ids) ? a.prospect_ids : []).map(uuid).filter(Boolean).slice(0, 100) as string[];
+      const nicho = limpar(a.nicho, 60).replace(/[%_,()]/g, " ").trim();
+      if (!ids.length && !nicho && a.todos_novos !== true) return { erro: "diga quais leads (prospect_ids), um nicho ou todos_novos=true" };
+      // só leads ainda não abordados: conversas em andamento nunca são apagadas por aqui
+      let q = db.from("gestao_prospects").select("id").eq("status", "novo").limit(200);
+      if (ids.length) q = q.in("id", ids);
+      if (nicho) q = q.ilike("nicho", `%${nicho}%`);
+      const { data: alvo } = await q;
+      const lista = (alvo ?? []).map((x) => x.id);
+      if (!lista.length) return { ok: true, leads_descartados: 0, nota: "nenhum lead novo bateu com o pedido (leads já abordados não são descartados por aqui)" };
+      await db.from("gestao_abordagens").update({ status: "descartada" }).in("prospect_id", lista).eq("status", "rascunho");
+      const motivo = limpar(a.motivo, 200);
+      const { error } = await db.from("gestao_prospects").update({ status: "descartado", ...(motivo ? { quente_motivo: `Descartado: ${motivo}` } : {}) }).in("id", lista);
+      return error ? { erro: "não consegui descartar" } : { ok: true, leads_descartados: lista.length, nota: "saíram das listas e da rotina e não voltam em garimpos futuros" };
+    }
+    case "ver_regras_prospeccao": {
+      const { data: c } = await db.from("gestao_agente_config").select("prefs, nichos, cidade_padrao").eq("id", "padrao").maybeSingle();
+      const p: any = c?.prefs ?? {};
+      return {
+        mensagens: { sempre: p.sempre ?? "", nunca: p.nunca ?? "", cta: p.cta ?? "", extra: p.extra ?? "", exemplo: p.exemplos ?? "", tamanho: p.tamanho, emoji: p.emoji, formalidade: p.formalidade },
+        rotina: { ativa: p.rotina?.ativa !== false, meta_diaria: p.rotina?.meta ?? 10, nota_minima: p.rotina?.nota_min ?? 40, nichos: p.rotina?.nichos ?? c?.nichos ?? [], cidade: c?.cidade_padrao },
+      };
+    }
+    case "ajustar_regras_prospeccao": {
+      const { data: c } = await db.from("gestao_agente_config").select("prefs, cidade_padrao").eq("id", "padrao").maybeSingle();
+      if (!c) return { erro: "configuração não encontrada" };
+      const prefs: any = { ...(c.prefs ?? {}) }, rotina: any = { ...(prefs.rotina ?? {}) };
+      const mudou: string[] = [];
+      for (const [campo, chave, max] of [["sempre", "sempre", 1200], ["nunca", "nunca", 1200], ["cta", "cta", 300], ["extra", "extra", 1200], ["exemplo", "exemplos", 1500]] as const) {
+        if (typeof a[campo] === "string") { prefs[chave] = limpar(a[campo], max); mudou.push(campo); }
+      }
+      if (["curta", "media", "longa"].includes(a.tamanho)) { prefs.tamanho = a.tamanho; mudou.push("tamanho"); }
+      if (["nenhum", "um"].includes(a.emoji)) { prefs.emoji = a.emoji; mudou.push("emoji"); }
+      if (["informal", "equilibrada", "formal"].includes(a.formalidade)) { prefs.formalidade = a.formalidade; mudou.push("formalidade"); }
+      if (Array.isArray(a.nichos_rotina)) {
+        const n = a.nichos_rotina.map((x: unknown) => limpar(x, 60)).filter(Boolean).slice(0, 12);
+        if (n.length) { rotina.nichos = n; mudou.push("nichos da rotina"); }
+      }
+      if (Number.isFinite(Number(a.meta_diaria)) && a.meta_diaria != null) { rotina.meta = Math.min(30, Math.max(1, Math.round(Number(a.meta_diaria)))); mudou.push("meta diária"); }
+      if (Number.isFinite(Number(a.nota_minima)) && a.nota_minima != null) { rotina.nota_min = Math.min(90, Math.max(0, Math.round(Number(a.nota_minima)))); mudou.push("nota mínima"); }
+      if (typeof a.rotina_ativa === "boolean") { rotina.ativa = a.rotina_ativa; mudou.push(a.rotina_ativa ? "rotina ligada" : "rotina desligada"); }
+      const cidade = limpar(a.cidade, 80);
+      if (!mudou.length && !cidade) return { erro: "nada para mudar" };
+      const { error } = await db.from("gestao_agente_config").update({ prefs: { ...prefs, rotina }, ...(cidade ? { cidade_padrao: cidade } : {}) }).eq("id", "padrao");
+      return error ? { erro: "não consegui salvar" } : { ok: true, mudou: cidade ? [...mudou, "cidade"] : mudou, nota: "vale para as próximas mensagens e para a rotina de amanhã" };
     }
     case "abordagens_pendentes": {
       const tres = new Date(Date.now() - 3 * 86400e3).toISOString();
