@@ -126,3 +126,9 @@ roda o Claude Code no GitHub, confere que só mudou `src/`, `public/` ou `index.
 | Supabase → Edge Functions → Secrets | `GITHUB_TOKEN_ASTRA`: token fine-grained só do repositório AstroviaSolutions, com Contents, Pull requests e Actions em Read and write, e Deployments em Read |
 | GitHub → Settings → Secrets and variables → Actions | Secret `ANTHROPIC_API_KEY`. Opcional: variável `ASTRA_MODELO_CODIGO` (padrão `claude-sonnet-5-5`) |
 | GitHub → Settings → Actions → General | Em "Workflow permissions", ligar "Allow GitHub Actions to create and approve pull requests" |
+
+## Astra · voz neural
+
+A Astra fala com vozes neurais em português (Google Cloud Text-to-Speech, Chirp 3 HD), escolhidas em Astra → Ajustes → Voz.
+Precisa do secret `GOOGLE_TTS_KEY` no Supabase: uma chave do Google Cloud com a **Cloud Text-to-Speech API** ativada
+(de preferência restrita só a essa API). Sem a chave, ou se a API falhar, o navegador lê com a voz dele.

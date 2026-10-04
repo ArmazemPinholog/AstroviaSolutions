@@ -12,6 +12,13 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { iguais, limpar } from "./seguranca.ts";
 import { transcrever } from "./gemini.ts";
 import { assinaturaValida, baixarMidia, digitando, dividir, enviar, pausa } from "./whatsapp.ts";
+import { falar } from "./voz.ts";
+
+/** voz configurada nos Ajustes da Astra (tenant.config.voz) */
+async function vozDoTenant(slug: string) {
+  const { data } = await sb.from("astra_tenants").select("config").eq("slug", slug).maybeSingle();
+  return (data?.config?.voz ?? {}) as { voz?: string; velocidade?: number; motor?: string };
+}
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
 
@@ -157,12 +164,27 @@ Deno.serve(async (req) => {
         if (transcricao && transcricao !== "[sem fala]" && /\p{L}{2,}/u.test(transcricao)) texto = transcricao;
       }
       if (!texto) return json(req, { erro: "mensagem vazia" }, 400);
-      const r = await mestre(limpar(corpoJson.tenant, 60) || "astrovia", texto, { db: membro.db, auth: membro.auth, perfilId: membro.perfilId, nomeDono: membro.nome });
-      return json(req, { ...r, transcricao: transcricao || undefined, partes: dividir(r.resposta) });
+      const slug = limpar(corpoJson.tenant, 60) || "astrovia";
+      const r = await mestre(slug, texto, { db: membro.db, auth: membro.auth, perfilId: membro.perfilId, nomeDono: membro.nome });
+      // voz ligada na tela: a resposta já volta com o áudio neural (sem isso, o navegador lê)
+      let voz = null;
+      if (corpoJson.voz === true) {
+        const cfg = await vozDoTenant(slug);
+        if (cfg.motor !== "navegador") voz = await falar(r.resposta, cfg);
+      }
+      return json(req, { ...r, transcricao: transcricao || undefined, partes: dividir(r.resposta), audio: voz?.audio });
     } catch (e) {
       console.error("mestre", e);
       return json(req, { erro: "falha no modo dono" }, 500);
     }
+  }
+
+  // teste de voz nos Ajustes (só equipe logada)
+  if (corpoJson.modo === "voz") {
+    if (!membro) return json(req, { erro: "Faça login na Sala de Gestão." }, 401);
+    if (!Deno.env.get("GOOGLE_TTS_KEY")) return json(req, { erro: "Falta o secret GOOGLE_TTS_KEY no Supabase." }, 400);
+    const v = await falar(limpar(corpoJson.texto, 400) || "Oi, eu sou a Astra.", { voz: limpar(corpoJson.voz, 60), velocidade: Number(corpoJson.velocidade) });
+    return v ? json(req, { audio: v.audio, voz: v.voz }) : json(req, { erro: "O Google não gerou o áudio. Confira se a Cloud Text-to-Speech API está ativada para a chave." }, 502);
   }
 
   // chat de teste / demo

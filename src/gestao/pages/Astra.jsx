@@ -38,8 +38,26 @@ const ATALHOS = [
   "Liste o que você aprendeu até agora.",
 ];
 
-/* voz: lê a resposta em português (voz do próprio navegador) */
-function falar(texto, aoTerminar) {
+/* voz: toca o áudio neural da Astra (Google, pt-BR); sem ele, lê com a voz do navegador */
+let tocando = null;
+function pararVoz() {
+  try { tocando?.pause(); } catch { /* já parou */ }
+  tocando = null;
+  window.speechSynthesis?.cancel();
+}
+function tocarAudio(base64, aoTerminar, reserva) {
+  pararVoz();
+  const a = new Audio(`data:audio/mpeg;base64,${base64}`);
+  tocando = a;
+  a.onended = () => { if (tocando === a) tocando = null; aoTerminar(); };
+  a.onerror = () => (reserva ? reserva() : aoTerminar());
+  a.play().catch(() => (reserva ? reserva() : aoTerminar()));
+}
+function falar(texto, aoTerminar, audio) {
+  if (audio) return tocarAudio(audio, aoTerminar, () => falarNavegador(texto, aoTerminar));
+  falarNavegador(texto, aoTerminar);
+}
+function falarNavegador(texto, aoTerminar) {
   try {
     const synth = window.speechSynthesis;
     if (!synth) return aoTerminar();
@@ -73,6 +91,17 @@ function useAoMudar(recarregar) {
     return () => { window.removeEventListener(MUDOU, f); document.removeEventListener("visibilitychange", vis); };
   }, [recarregar]);
 }
+
+// vozes neurais em português (Google Cloud Text-to-Speech); a lista válida fica em supabase/functions/astra/voz.ts
+const VOZES = [
+  { value: "pt-BR-Chirp3-HD-Aoede", label: "Aoede · feminina, natural" },
+  { value: "pt-BR-Chirp3-HD-Kore", label: "Kore · feminina, firme" },
+  { value: "pt-BR-Chirp3-HD-Leda", label: "Leda · feminina, jovem" },
+  { value: "pt-BR-Chirp3-HD-Charon", label: "Charon · masculina, grave" },
+  { value: "pt-BR-Chirp3-HD-Puck", label: "Puck · masculina, animada" },
+  { value: "pt-BR-Neural2-A", label: "Neural2 A · feminina, clássica" },
+  { value: "pt-BR-Neural2-B", label: "Neural2 B · masculina, clássica" },
+];
 
 const ESPERA = ["Consultando a sala…", "Cruzando funil, projetos e financeiro…", "Organizando a resposta…"];
 
@@ -176,11 +205,11 @@ export function Conversa({ modo, compacto = false }) {
     const id = setInterval(() => setEspera((n) => Math.min(n + 1, ESPERA.length - 1)), 4000);
     return () => clearInterval(id);
   }, [estado]);
-  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  useEffect(() => () => pararVoz(), []);
   const alternarVoz = () => {
     const v = !voz;
     setVoz(v);
-    if (!v) window.speechSynthesis?.cancel();
+    if (!v) pararVoz();
     try { localStorage.setItem("astra:voz", v ? "1" : "0"); } catch { /* sem storage */ }
   };
 
@@ -191,7 +220,7 @@ export function Conversa({ modo, compacto = false }) {
     setEstado("pensando");
     try {
       const body = modo === "dono"
-        ? { modo: "dono", ...(audio ? { audio } : { mensagem: txt }) }
+        ? { modo: "dono", voz: voz && slot.visivel, ...(audio ? { audio } : { mensagem: txt }) }
         : { sessao: loja.cliente.sessao, ...(audio ? { audio } : { mensagem: txt }) };
       const d = await astra(body);
       if (d.acoes?.length) {
@@ -206,7 +235,7 @@ export function Conversa({ modo, compacto = false }) {
         setMsgs((m) => [...m, { de: "astra", txt: partes[i], ensinou: i === partes.length - 1 ? d.ensinados : null, contato: d.contato }]);
       }
       if (!partes.length && d.handoff) setMsgs((m) => [...m, { de: "sis", txt: "Conversa passada para a equipe." }]);
-      if (voz && d.resposta && slot.visivel) falar(d.resposta, () => setEstado("idle"));
+      if (voz && d.resposta && slot.visivel) falar(d.resposta, () => setEstado("idle"), d.audio);
       else setTimeout(() => setEstado("idle"), 900);
     } catch (e) {
       setErro(e.message);
@@ -462,12 +491,27 @@ function Ajustes({ tenant, onSalvo }) {
     const m = tenant?.config?.motor || {};
     return { dono: m.dono === "claude" ? (m.modelo_dono || "claude-sonnet-5-5") : "gemini", cliente: m.cliente === "claude" ? (m.modelo_cliente || "claude-haiku-4-5-20251001") : "gemini" };
   });
+  const [vozCfg, setVozCfg] = useState(() => ({ motor: "google", voz: "pt-BR-Chirp3-HD-Aoede", velocidade: 1.05, ...(tenant?.config?.voz || {}) }));
+  const [testando, setTestando] = useState(false);
   const [msg, setMsg] = useState("");
+
+  const testarVoz = async () => {
+    setMsg(""); setTestando(true);
+    try {
+      if (vozCfg.motor === "navegador") falarNavegador("Oi, Christian. Esta é a minha voz pelo navegador.", () => {});
+      else {
+        const d = await astra({ modo: "voz", texto: "Oi, Christian. Esta é a minha nova voz. Bora achar uns clientes hoje?", voz: vozCfg.voz, velocidade: vozCfg.velocidade });
+        tocarAudio(d.audio, () => {});
+      }
+    } catch (e) { setMsg(e.message); }
+    setTestando(false);
+  };
 
   const salvar = async () => {
     setMsg("");
     const config = {
       ...cfg,
+      voz: { motor: vozCfg.motor === "navegador" ? "navegador" : "google", voz: vozCfg.voz, velocidade: Math.min(1.4, Math.max(0.8, Number(vozCfg.velocidade) || 1.05)) },
       nome_ia: (cfg.nome_ia || "Astra").trim(),
       telefone_equipe: (cfg.telefone_equipe || "").replace(/\D/g, "") || undefined,
       whatsapp_phone_id: (cfg.whatsapp_phone_id || "").replace(/\D/g, "") || undefined,
@@ -525,6 +569,23 @@ function Ajustes({ tenant, onSalvo }) {
                 options={[{ value: "gemini", label: "Gemini (grátis)" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }, { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]} />
             </Field>
             <p className="text-xs leading-relaxed text-titanium sm:col-span-2">O Claude usa a API da Anthropic, cobrada à parte e separada da assinatura Pro, então não mexe na sua cota de programação. Precisa do secret <span className="font-mono text-titanium-bright">ANTHROPIC_API_KEY</span> no Supabase. Sem ele, ou se faltar crédito, a Astra volta sozinha para o Gemini.</p>
+          </Card>
+          <Card className="grid gap-4 p-4 sm:grid-cols-3">
+            <p className="flex items-center gap-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee] sm:col-span-3"><Volume2 size={12} /> Voz</p>
+            <Field label="Motor">
+              <Select value={vozCfg.motor} onChange={(e) => setVozCfg({ ...vozCfg, motor: e.target.value })}
+                options={[{ value: "google", label: "Neural (Google, natural)" }, { value: "navegador", label: "Do navegador (grátis)" }]} />
+            </Field>
+            <Field label="Voz">
+              <Select value={vozCfg.voz} disabled={vozCfg.motor === "navegador"} onChange={(e) => setVozCfg({ ...vozCfg, voz: e.target.value })} options={VOZES} />
+            </Field>
+            <Field label="Velocidade" hint="0,8 a 1,4">
+              <Input type="number" min="0.8" max="1.4" step="0.05" value={vozCfg.velocidade} onChange={(e) => setVozCfg({ ...vozCfg, velocidade: e.target.value })} />
+            </Field>
+            <div className="flex items-center justify-between gap-2 sm:col-span-3">
+              <p className="text-xs text-titanium">A voz neural precisa do secret <span className="font-mono text-titanium-bright">GOOGLE_TTS_KEY</span> no Supabase. Sem ele, a Astra usa a voz do navegador.</p>
+              <Btn size="sm" variant="ghost" onClick={testarVoz} disabled={testando}><Play size={13} /> {testando ? "Gerando…" : "Testar voz"}</Btn>
+            </div>
           </Card>
           <Card className="grid gap-4 p-4 sm:grid-cols-4">
             <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee] sm:col-span-4">Agenda para calls</p>
