@@ -11,7 +11,8 @@ export async function enviar(phoneId: string, para: string, texto: string) {
     headers: { Authorization: `Bearer ${TOKEN()}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", to: para, type: "text", text: { body: texto } }),
   });
-  if (!r.ok) console.error("wa enviar", r.status);
+  // o motivo da Meta ajuda na configuração (ex.: número fora da lista de teste, janela de 24h fechada, token vencido)
+  if (!r.ok) console.error("wa enviar", r.status, (await r.text().catch(() => "")).slice(0, 300));
 }
 
 /** marca como lida e mostra "digitando..." ao cliente */
