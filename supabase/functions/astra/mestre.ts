@@ -275,11 +275,21 @@ ${await aprendizados(t.id) || "(nenhum ainda)"}
   let resposta = "";
   const acoes: string[] = [], ensinados: string[] = [];
   for (let rodada = 0; rodada < 6; rodada++) {
-    const content = await conversar(system, contents, ferramentas, 0.4, {
-      motor: t.config?.motor?.dono,
-      modelo: t.config?.motor?.modelo_dono,
-      pensar: "normal",
-    });
+    let content: any;
+    try {
+      content = await conversar(system, contents, ferramentas, 0.4, {
+        motor: t.config?.motor?.dono,
+        modelo: t.config?.motor?.modelo_dono,
+        pensar: "normal",
+      });
+    } catch (e) {
+      console.error("mestre sem IA", String(e).slice(0, 200));
+      if (!resposta) {
+        resposta = "Estou sem cota de inteligência artificial agora: o limite gratuito do Gemini acabou por hoje. " +
+          "Ele volta sozinho em algumas horas. Para não depender disso, ative o faturamento no Google AI Studio ou cadastre a chave do Claude.";
+      }
+      break;
+    }
     contents.push(content);
     const chamadas = content.parts.filter((p: any) => p.functionCall);
     const textos = content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();

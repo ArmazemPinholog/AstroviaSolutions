@@ -13,22 +13,52 @@ export type Motor = { motor?: "gemini" | "claude"; modelo?: string; pensar?: "ra
 /** o modelo do Gemini aceita orçamento de raciocínio? (família 2.5) */
 const aceitaOrcamento = (m: string) => /2\.5/.test(m);
 
+// Se a cota grátis de um modelo acabar (429) ou ele estiver fora do ar, tenta o próximo:
+// cada modelo do Gemini tem a sua própria cota gratuita.
+// os apelidos "-latest" sempre apontam para o modelo atual da família (os 2.5 saíram do ar para contas novas)
+const RESERVAS = ["gemini-flash-lite-latest", "gemini-flash-latest"];
+const cadeia = () => [...new Set([MODELO(), ...RESERVAS])];
+const pular = (status: number) => status === 429 || status === 503 || status === 500 || status === 404;
+
 async function chamarGemini(body: Record<string, unknown>, pensar: "rapido" | "normal" = "normal") {
-  const modelo = MODELO();
-  const gc = (body.generationConfig ?? {}) as Record<string, unknown>;
-  // pensar menos = responder mais rápido; o atendimento ao cliente não precisa de raciocínio longo
-  if (aceitaOrcamento(modelo)) gc.thinkingConfig = { thinkingBudget: pensar === "rapido" ? (/pro/.test(modelo) ? 128 : 0) : 1024 };
-  body.generationConfig = gc;
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`gemini ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  const d = await r.json();
-  const content = d.candidates?.[0]?.content;
-  if (!content?.parts) throw new Error(`gemini sem resposta (${d.candidates?.[0]?.finishReason ?? d.promptFeedback?.blockReason ?? "?"})`);
-  return content;
+  let ultimo = "";
+  for (const modelo of cadeia()) {
+    const gc = { ...((body.generationConfig ?? {}) as Record<string, unknown>) };
+    // pensar menos = responder mais rápido; o atendimento ao cliente não precisa de raciocínio longo
+    if (aceitaOrcamento(modelo)) gc.thinkingConfig = { thinkingBudget: pensar === "rapido" ? (/pro/.test(modelo) ? 128 : 0) : 1024 };
+    else if (pensar === "rapido" && /gemini-3/.test(modelo)) gc.thinkingConfig = { thinkingLevel: "low" };
+    else delete gc.thinkingConfig;
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
+      body: JSON.stringify({ ...body, generationConfig: gc }),
+    });
+    if (!r.ok) {
+      ultimo = `gemini ${modelo} ${r.status}: ${(await r.text()).slice(0, 300)}`;
+      if (r.status === 400 && gc.thinkingConfig) {
+        // modelo não aceitou o ajuste de raciocínio: tenta de novo sem ele
+        const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
+          body: JSON.stringify({ ...body, generationConfig: { ...gc, thinkingConfig: undefined } }),
+        });
+        if (r2.ok) {
+          const c2 = (await r2.json()).candidates?.[0]?.content;
+          if (c2?.parts) return c2;
+        }
+      }
+      if (pular(r.status)) {
+        console.error("modelo indisponível, tentando o próximo:", ultimo.slice(0, 120));
+        continue;
+      }
+      throw new Error(ultimo);
+    }
+    const d = await r.json();
+    const content = d.candidates?.[0]?.content;
+    if (!content?.parts) throw new Error(`gemini sem resposta (${d.candidates?.[0]?.finishReason ?? d.promptFeedback?.blockReason ?? "?"})`);
+    return content;
+  }
+  throw new Error(ultimo || "gemini indisponível");
 }
 
 // ---------- adaptador Claude ----------
@@ -97,12 +127,21 @@ export async function conversar(system: string, contents: unknown[], tools: unkn
       console.error("claude falhou, usando gemini:", String(e).slice(0, 200));
     }
   }
-  return chamarGemini({
-    systemInstruction: { parts: [{ text: system }] },
-    contents,
-    tools,
-    generationConfig: { temperature: temperatura, maxOutputTokens: 4096 },
-  }, m.pensar);
+  try {
+    return await chamarGemini({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      tools,
+      generationConfig: { temperature: temperatura, maxOutputTokens: 4096 },
+    }, m.pensar);
+  } catch (e) {
+    // todos os Gemini sem cota: se houver chave do Claude, ele cobre
+    if (m.motor !== "claude" && CLAUDE_KEY()) {
+      console.error("gemini esgotado, usando claude:", String(e).slice(0, 160));
+      return await chamarClaude(system, contents as any[], tools as any[], temperatura, "claude-haiku-4-5-20251001");
+    }
+    throw e;
+  }
 }
 
 /** geração simples de texto (usada pelo simulador e por tarefas internas) */

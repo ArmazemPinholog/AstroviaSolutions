@@ -201,11 +201,20 @@ export async function atender(e: Entrada) {
   const ensinado = await aprendizados(t.id);
   let resposta = "", chamouEquipe = false;
   for (let rodada = 0; rodada < 5; rodada++) {
-    const content = await conversar(instrucoes(t, c, ensinado), contents, ferramentas, 0.6, {
-      motor: t.config?.motor?.cliente,
-      modelo: t.config?.motor?.modelo_cliente,
-      pensar: "rapido",
-    });
+    let content: any;
+    try {
+      content = await conversar(instrucoes(t, c, ensinado), contents, ferramentas, 0.6, {
+        motor: t.config?.motor?.cliente,
+        modelo: t.config?.motor?.modelo_cliente,
+        pensar: "rapido",
+      });
+    } catch (err) {
+      // IA fora do ar ou sem cota: o cliente nunca fica sem resposta e a equipe é avisada
+      console.error("atendimento sem IA", String(err).slice(0, 200));
+      if (!resposta) resposta = "Recebi sua mensagem! Já vou te responder com calma, só um instante.";
+      await avisarEquipe(t, c, "⚠️ IA sem cota agora — responda este cliente manualmente");
+      break;
+    }
     contents.push(content);
     const chamadas = content.parts.filter((p: any) => p.functionCall);
     const textos = content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();
