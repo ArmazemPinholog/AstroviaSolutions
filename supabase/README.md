@@ -113,3 +113,16 @@ import "https://raw.githubusercontent.com/ArmazemPinholog/AstroviaSolutions/<sha
 ```
 
 Ou, com a CLI: `supabase functions deploy gestao-agente --no-verify-jwt` e `supabase functions deploy astra --no-verify-jwt`.
+
+## Astra · melhorias no próprio sistema
+
+A Astra pede (ferramenta `pedir_melhoria` ou aba **Astra → Melhorias**), o workflow `.github/workflows/astra-melhoria.yml`
+roda o Claude Code no GitHub, confere que só mudou `src/`, `public/` ou `index.html` e que o build passa, e abre um PR
+(ramo `astra/melhoria-*`, rótulo `astra`). A Vercel gera a prévia. **Publicar** = botão "Aprovar e publicar" na aba Melhorias
+(só admin, só com a prévia pronta), que faz o merge na `main`. A Astra não tem ferramenta para publicar.
+
+| Onde | O quê |
+|---|---|
+| Supabase → Edge Functions → Secrets | `GITHUB_TOKEN_ASTRA`: token fine-grained só do repositório AstroviaSolutions, com Contents, Pull requests e Actions em Read and write, e Deployments em Read |
+| GitHub → Settings → Secrets and variables → Actions | Secret `ANTHROPIC_API_KEY`. Opcional: variável `ASTRA_MODELO_CODIGO` (padrão `claude-sonnet-5-5`) |
+| GitHub → Settings → Actions → General | Em "Workflow permissions", ligar "Allow GitHub Actions to create and approve pull requests" |

@@ -120,6 +120,17 @@ export const ferramentasProspeccao = [
     },
   },
   {
+    name: "pedir_melhoria",
+    description:
+      "Pede uma melhoria no CÓDIGO do site ou da Sala de Gestão (telas, textos, layout, comportamento). Um agente de código faz a mudança e abre uma proposta com link de prévia em Astra → Melhorias. Você não publica: só o Christian, no botão. Escreva o pedido completo e específico (onde, o quê, como deve ficar). Use quando ele pedir mudanças no sistema que as outras ferramentas não fazem.",
+    parameters: { type: "object", properties: { pedido: { type: "string" } }, required: ["pedido"] },
+  },
+  {
+    name: "ver_melhorias",
+    description: "Situação das melhorias de código: em andamento, propostas esperando aprovação (com link de prévia), as que não deram certo e as já publicadas.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
     name: "abordagens_pendentes",
     description: "Mensagens em rascunho esperando aprovação do Christian, e leads abordados há mais de 3 dias sem resposta (precisam de follow-up).",
     parameters: { type: "object", properties: {} },
@@ -308,6 +319,13 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
       const { error } = await db.from("gestao_agente_config").update({ prefs: { ...prefs, rotina }, ...(cidade ? { cidade_padrao: cidade } : {}) }).eq("id", "padrao");
       return error ? { erro: "não consegui salvar" } : { ok: true, mudou: cidade ? [...mudou, "cidade"] : mudou, nota: "vale para as próximas mensagens e para a rotina de amanhã" };
     }
+    case "pedir_melhoria": {
+      const pedido = limpar(a.pedido, 3000);
+      if (pedido.length < 15) return { erro: "descreva melhor a melhoria" };
+      return await agente(auth, { acao: "melhoria_pedir", pedido });
+    }
+    case "ver_melhorias":
+      return await agente(auth, { acao: "melhorias" });
     case "abordagens_pendentes": {
       const tres = new Date(Date.now() - 3 * 86400e3).toISOString();
       const [{ data: rasc }, { data: parados }] = await Promise.all([

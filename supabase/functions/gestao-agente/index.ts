@@ -10,6 +10,10 @@
 //   responder          → o lead respondeu: sugere a próxima mensagem e, se for a hora, a proposta
 //   rotina             → rotina diária da Astra: garimpa, investiga e deixa leads + follow-ups em rascunho
 //   importar_cnpj      → recebe CNPJs recém-abertos (dados abertos da Receita) e salva como leads
+//   melhoria_pedir     → pede uma melhoria de código: Claude Code no GitHub abre PR com prévia (admin)
+//   melhorias          → propostas da Astra (PRs), prévias e pedidos em andamento
+//   melhoria_publicar  → aprova e publica uma proposta (merge na main; só admin, só pelo botão)
+//   melhoria_descartar → fecha uma proposta (admin)
 //   criar_conteudo     → legenda/roteiro + imagem/vídeo com bot de mídia da Poe
 //   gerar_midia        → (re)gera a imagem/vídeo de um conteúdo
 //   publicar           → publica feed/story/reels no Instagram (Graph API)
@@ -123,6 +127,16 @@ Deno.serve(async (req) => {
       case "rotina":
         // "rodar agora" pela sala (membro já conferido acima): mesma rotina do cron
         return rotinaEmSegundoPlano(clienteAdmin(), true);
+      case "melhoria_pedir":
+      case "melhoria_publicar":
+      case "melhoria_descartar": {
+        const { data: admin } = await sb.rpc("gestao_admin");
+        if (admin !== true) throw new Falha("Só o administrador mexe nas melhorias do sistema.", 403);
+        if (body.acao === "melhoria_pedir") return json(await pedirMelhoria(body));
+        return json(await decidirMelhoria(Number(body.numero), body.acao === "melhoria_publicar"));
+      }
+      case "melhorias":
+        return json(await listarMelhorias());
       case "criar_conteudo":
         return json(await criarConteudo(sb, body));
       case "gerar_midia":
@@ -1316,4 +1330,84 @@ async function importarCnpj(sb: SupabaseClient, b: { leads?: unknown[] }) {
   const unicos = leads.filter((l) => !l.telefone || !usados.has(l.telefone));
   const r = await salvarNovos(sb, unicos);
   return { recebidos: lista.length, validos: leads.length, ja_existiam: leads.length - unicos.length + r.repetidos, novos: r.novos.length };
+}
+
+/* ============================================================
+   MELHORIAS DE CÓDIGO — a Astra pede, o Claude Code (GitHub
+   Actions, workflow astra-melhoria.yml) faz a mudança e abre um
+   PR com prévia da Vercel. Publicar = merge na main, só pelo
+   botão do admin na sala. Token: GITHUB_TOKEN_ASTRA (fine-grained,
+   só este repositório: Contents, Pull requests, Actions RW;
+   Deployments R).
+   ============================================================ */
+const REPO = () => env("GITHUB_REPO_ASTRA") || "ArmazemPinholog/AstroviaSolutions";
+const RAMO_ASTRA = /^astra\/melhoria-[a-z0-9-]+$/;
+
+async function gh(caminho: string, init: RequestInit = {}) {
+  const token = env("GITHUB_TOKEN_ASTRA");
+  if (!token) throw new Falha("Falta o secret GITHUB_TOKEN_ASTRA no Supabase para a Astra mexer no código.", 400);
+  const r = await fetch(`https://api.github.com/repos/${REPO()}${caminho}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "astra-astrovia", ...(init.headers || {}) },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (r.status === 204) return {};
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Falha(`GitHub: ${d?.message || r.statusText}`, 502);
+  return d;
+}
+
+async function pedirMelhoria(b: { pedido?: string }) {
+  const pedido = String(b.pedido || "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim().slice(0, 3000);
+  if (pedido.length < 15) throw new Falha("Descreva a melhoria com um pouco mais de detalhe.");
+  const id = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
+  await gh("/actions/workflows/astra-melhoria.yml/dispatches", { method: "POST", body: JSON.stringify({ ref: "main", inputs: { pedido, id } }) });
+  return { ok: true, id, nota: "O Claude Code está trabalhando no GitHub (leva de 3 a 15 minutos). A proposta aparece em Astra → Melhorias com um link de prévia." };
+}
+
+async function previa(ramo: string) {
+  try {
+    const deps = await gh(`/deployments?ref=${encodeURIComponent(ramo)}&per_page=1`);
+    if (!deps?.[0]) return { estado: "aguardando" };
+    const st = await gh(`/deployments/${deps[0].id}/statuses?per_page=1`);
+    return { estado: st?.[0]?.state || "aguardando", url: st?.[0]?.environment_url || st?.[0]?.target_url || null };
+  } catch { return { estado: "desconhecido" }; }
+}
+
+async function listarMelhorias() {
+  const [prs, runs] = await Promise.all([
+    gh("/pulls?state=all&per_page=30&sort=created&direction=desc"),
+    gh("/actions/workflows/astra-melhoria.yml/runs?per_page=10").catch(() => ({ workflow_runs: [] })),
+  ]);
+  const daAstra = (prs || []).filter((p: any) => RAMO_ASTRA.test(p.head?.ref || ""));
+  const ramos = new Set(daAstra.map((p: any) => p.head.ref.replace("astra/melhoria-", "")));
+  const propostas = await Promise.all(daAstra.filter((p: any) => p.state === "open").map(async (p: any) => ({
+    numero: p.number, titulo: String(p.title).replace(/^Astra: /, ""), resumo: String(p.body || "").split("\n---")[0].slice(0, 1200),
+    criada_em: p.created_at, url: p.html_url, previa: await previa(p.head.ref),
+  })));
+  const pedido = (r: any) => String(r.display_title || "").replace(/^melhoria [a-z0-9-]+: /, "").slice(0, 300);
+  const idDo = (r: any) => String(r.display_title || "").match(/^melhoria ([a-z0-9-]+):/)?.[1] || "";
+  return {
+    propostas,
+    em_andamento: (runs.workflow_runs || []).filter((r: any) => r.status !== "completed").map((r: any) => ({ pedido: pedido(r), desde: r.created_at })),
+    // terminou sem abrir proposta: falhou ou não havia o que mudar
+    sem_proposta: (runs.workflow_runs || []).filter((r: any) => r.status === "completed" && !ramos.has(idDo(r)) && Date.now() - Date.parse(r.created_at) < 3 * 864e5)
+      .map((r: any) => ({ pedido: pedido(r), resultado: r.conclusion === "success" ? "nada foi alterado (veja o motivo no GitHub)" : "falhou", url: r.html_url, quando: r.created_at })),
+    publicadas: daAstra.filter((p: any) => p.merged_at).slice(0, 5).map((p: any) => ({ numero: p.number, titulo: String(p.title).replace(/^Astra: /, ""), publicada_em: p.merged_at })),
+  };
+}
+
+async function decidirMelhoria(numero: number, publicar: boolean) {
+  if (!Number.isInteger(numero) || numero < 1) throw new Falha("Proposta inválida.");
+  const pr = await gh(`/pulls/${numero}`);
+  // só propostas da Astra, abertas, apontando para a main
+  if (!RAMO_ASTRA.test(pr.head?.ref || "") || pr.base?.ref !== "main" || pr.head?.repo?.full_name !== REPO()) throw new Falha("Essa proposta não é da Astra.", 403);
+  if (pr.state !== "open") throw new Falha("Essa proposta já foi decidida.");
+  if (publicar) {
+    await gh(`/pulls/${numero}/merge`, { method: "PUT", body: JSON.stringify({ merge_method: "squash", sha: pr.head.sha }) });
+  } else {
+    await gh(`/pulls/${numero}`, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
+  }
+  await gh(`/git/refs/heads/${pr.head.ref}`, { method: "DELETE" }).catch(() => null);
+  return { ok: true, nota: publicar ? "Publicada: a Vercel coloca no ar em 1 a 2 minutos." : "Proposta descartada." };
 }

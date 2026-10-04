@@ -1,0 +1,117 @@
+# Melhorias pedidas à Astra: o Claude Code faz a mudança, o build é conferido e abre um
+# pull request com prévia da Vercel. NADA vai para a main sem o Christian clicar em
+# "Aprovar e publicar" na aba Astra → Melhorias (a própria Astra não consegue publicar).
+#
+# Disparado pela Astra (função gestao-agente, ação melhoria_pedir) com o token GITHUB_TOKEN_ASTRA.
+# Precisa do secret ANTHROPIC_API_KEY no GitHub e, em Settings → Actions → General,
+# "Allow GitHub Actions to create and approve pull requests" ligado.
+name: Melhoria pedida à Astra
+run-name: "melhoria ${{ inputs.id }}: ${{ inputs.pedido }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pedido:
+        description: "O que melhorar (texto do Christian, via Astra)"
+        required: true
+      id:
+        description: "Identificador do pedido"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: astra-melhoria-${{ inputs.id }}
+  cancel-in-progress: false
+
+jobs:
+  melhorar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+
+      - name: Claude Code faz a mudança
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: >-
+            --model ${{ vars.ASTRA_MODELO_CODIGO || 'claude-sonnet-5-5' }}
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm run build),Bash(npm run lint),Bash(git diff:*),Bash(git status)"
+          prompt: |
+            Você é o desenvolvedor da Astrovia Solutions. O site e a Sala de Gestão são React + Vite + Tailwind
+            (site em src/, Sala em src/gestao/, demos em public/demos/). O Christian pediu esta melhoria pela Astra:
+
+            <pedido>
+            ${{ inputs.pedido }}
+            </pedido>
+
+            Regras:
+            - Faça só o que o pedido diz, com a menor mudança que resolve. Siga o estilo do código ao redor
+              (português nos textos e nomes, mesma densidade de comentários, mesmos componentes de src/gestao/ui.jsx).
+            - Só altere arquivos em src/, public/ ou index.html. Nunca mexa em supabase/, .github/, scripts/,
+              package.json, vercel.json nem em src/gestao/supabase.js (o workflow recusa).
+            - Segurança: não remova verificações de login/permissão, não exponha chaves, não carregue scripts
+              de domínios novos. Se o pedido exigir mudar banco ou Edge Function, não tente: explique no resumo.
+            - Rode `npm run build` no fim; ele precisa passar.
+            - Escreva em .astra-resumo.md (na raiz) um resumo para o Christian, em português simples:
+              primeira linha = título curto da mudança; depois o que mudou, onde ver e o que testar.
+              Se não deu para fazer, explique o porquê no resumo e não altere outros arquivos.
+
+      - name: Conferir arquivos e build
+        id: conferir
+        run: |
+          RESUMO="$(cat .astra-resumo.md 2>/dev/null || echo 'Melhoria pedida à Astra')"
+          rm -f .astra-resumo.md package-lock.json
+          git add -A
+          ALTERADOS="$(git diff --cached --name-only)"
+          if [ -z "$ALTERADOS" ]; then
+            echo "Nenhum arquivo alterado."; echo "$RESUMO"; exit 0
+          fi
+          PROIBIDOS="$(echo "$ALTERADOS" | grep -Ev '^(src/|public/|index\.html$)' || true)"
+          PROIBIDOS="$PROIBIDOS$(echo "$ALTERADOS" | grep -E '^src/gestao/supabase\.js$' || true)"
+          if [ -n "$PROIBIDOS" ]; then
+            echo "::error::Arquivos fora do permitido: $PROIBIDOS"; exit 1
+          fi
+          npm run build
+          {
+            echo "titulo=$(echo "$RESUMO" | head -1 | cut -c1-90)"
+            echo "mudou=1"
+          } >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$RESUMO" > "$RUNNER_TEMP/resumo.md"
+
+      - name: Abrir proposta (pull request)
+        if: steps.conferir.outputs.mudou == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITULO: ${{ steps.conferir.outputs.titulo }}
+          PEDIDO: ${{ inputs.pedido }}
+        run: |
+          RAMO="astra/melhoria-${{ inputs.id }}"
+          git config user.name "Astra (Astrovia)"
+          git config user.email "astra@astrovia.invalid"
+          git checkout -b "$RAMO"
+          git commit -q -m "Astra: $TITULO"
+          git push -q origin "$RAMO"
+          {
+            cat "$RUNNER_TEMP/resumo.md"
+            echo
+            echo "---"
+            echo "**Pedido:** $PEDIDO"
+            echo
+            echo "Proposta da Astra. Só vai ao ar quando o Christian aprovar em Astra → Melhorias."
+          } > "$RUNNER_TEMP/corpo.md"
+          gh label create astra --color 22d3ee --description "Melhoria proposta pela Astra" 2>/dev/null || true
+          gh pr create --base main --head "$RAMO" --title "Astra: $TITULO" --body-file "$RUNNER_TEMP/corpo.md" --label astra
+        # o pedido entra por variável de ambiente (nunca interpolado no script)

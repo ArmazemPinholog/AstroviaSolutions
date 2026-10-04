@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play } from "lucide-react";
+import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play, Wand2, ExternalLink } from "lucide-react";
 import { sb } from "../supabase";
 import { agente } from "../agente";
 import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink } from "../ui";
@@ -740,6 +740,96 @@ function Resultados() {
   );
 }
 
+/* ---------- melhorias do sistema: a Astra propõe, você aprova ---------- */
+const PREVIA = { success: ["Prévia pronta", "#34d399"], failure: ["Build falhou", "#ff2fd0"], error: ["Build falhou", "#ff2fd0"], pending: ["Gerando prévia", "#22d3ee"], in_progress: ["Gerando prévia", "#22d3ee"], aguardando: ["Gerando prévia", "#22d3ee"] };
+
+function Melhorias() {
+  const { admin } = useG();
+  const [d, setD] = useState(null);
+  const [erro, setErro] = useState("");
+  const [pedido, setPedido] = useState("");
+  const [ocupado, setOcupado] = useState(null);
+  const carregar = useCallback(async () => {
+    try { setD(await agente("melhorias")); setErro(""); } catch (e) { setErro(e.message); setD((x) => x || { propostas: [], em_andamento: [], sem_proposta: [], publicadas: [] }); }
+  }, []);
+  useEffect(() => { carregar(); }, [carregar]);
+  useAoMudar(carregar);
+  // enquanto algo está sendo feito ou a prévia não ficou pronta, atualiza sozinho
+  useEffect(() => {
+    const andando = d?.em_andamento?.length || d?.propostas?.some((p) => !["success", "failure", "error"].includes(p.previa?.estado));
+    if (!andando) return;
+    const id = setInterval(carregar, 20000);
+    return () => clearInterval(id);
+  }, [d, carregar]);
+
+  const pedir = async () => {
+    if (pedido.trim().length < 15) { setErro("Descreva a melhoria com um pouco mais de detalhe."); return; }
+    setOcupado("pedir");
+    try { await agente("melhoria_pedir", { pedido: pedido.trim() }); setPedido(""); setTimeout(carregar, 4000); } catch (e) { setErro(e.message); }
+    setOcupado(null);
+  };
+  const decidir = async (numero, publicar) => {
+    if (publicar && !window.confirm("Publicar esta mudança no site? Ela entra no ar em 1 a 2 minutos.")) return;
+    setOcupado(numero);
+    try { await agente(publicar ? "melhoria_publicar" : "melhoria_descartar", { numero }); await carregar(); } catch (e) { setErro(e.message); }
+    setOcupado(null);
+  };
+
+  if (!d) return <Empty>Carregando…</Empty>;
+  return (
+    <div className="space-y-4">
+      {erro && <p className="text-sm text-[#ff9be9]">{erro}</p>}
+      {admin && (
+        <Card className="space-y-3 p-4">
+          <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee]">Pedir uma melhoria</p>
+          <Textarea rows={3} placeholder="Ex.: na aba Aprovar envios, mostre o telefone do lead embaixo do nome." value={pedido} onChange={(e) => setPedido(e.target.value)} />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-titanium">Também dá para pedir pela conversa. Nada vai ao ar sem você aprovar aqui.</p>
+            <Btn size="sm" variant="neon" onClick={pedir} disabled={ocupado === "pedir"}><Wand2 size={13} /> {ocupado === "pedir" ? "Enviando…" : "Pedir"}</Btn>
+          </div>
+        </Card>
+      )}
+
+      {d.em_andamento.map((r, i) => (
+        <Card key={i} className="flex items-center gap-3 p-4">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-[#22d3ee]" />
+          <p className="min-w-0 flex-1 truncate text-sm text-titanium-bright">Fazendo: {r.pedido}</p>
+        </Card>
+      ))}
+
+      {!d.propostas.length && !d.em_andamento.length && <Empty>Nenhuma proposta esperando você. Peça uma melhoria acima ou pela conversa.</Empty>}
+      {d.propostas.map((p) => {
+        const [rot, cor] = PREVIA[p.previa?.estado] || ["Prévia indisponível", "#8a8f98"];
+        return (
+          <Card key={p.numero} className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium">{p.titulo}</p>
+              <Badge color={cor}>{rot}</Badge>
+            </div>
+            <p className="whitespace-pre-wrap text-sm text-titanium">{p.resumo.split("\n").slice(1).join("\n").trim() || p.resumo}</p>
+            <div className="flex flex-wrap gap-2">
+              {p.previa?.url && <a href={p.previa.url} target="_blank" rel="noopener noreferrer"><Btn size="sm" variant="ghost"><ExternalLink size={13} /> Abrir prévia</Btn></a>}
+              <a href={p.url} target="_blank" rel="noopener noreferrer"><Btn size="sm" variant="ghost">Ver o código</Btn></a>
+              {admin && <Btn size="sm" variant="neon" disabled={ocupado === p.numero || p.previa?.estado !== "success"} onClick={() => decidir(p.numero, true)}><Check size={13} /> Aprovar e publicar</Btn>}
+              {admin && <Btn size="sm" variant="ghost" disabled={ocupado === p.numero} onClick={() => decidir(p.numero, false)}><X size={13} /> Descartar</Btn>}
+            </div>
+          </Card>
+        );
+      })}
+
+      {d.sem_proposta.length > 0 && (
+        <Card className="p-4">
+          <p className="mb-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#fbbf24]">Pedidos sem proposta</p>
+          <ul className="space-y-1 text-sm">
+            {d.sem_proposta.map((r, i) => <li key={i} className="text-titanium">{r.pedido} · {r.resultado} · <a className="underline" href={r.url} target="_blank" rel="noopener noreferrer">detalhes</a></li>)}
+          </ul>
+        </Card>
+      )}
+      {d.publicadas.length > 0 && <p className="text-xs text-titanium">Publicadas: {d.publicadas.map((p) => p.titulo).join(" · ")}</p>}
+    </div>
+  );
+}
+
 /* ---------- Astra flutuante (acompanha todas as páginas) ---------- */
 export function AstraFlutuante() {
   const [aberta, setAberta] = useState(false);
@@ -772,6 +862,7 @@ export default function Astra() {
   const ABAS = [
     { id: "aprovar", label: "Aprovar envios", icon: Check },
     { id: "resultados", label: "Resultados", icon: BarChart3 },
+    { id: "melhorias", label: "Melhorias", icon: Wand2 },
     { id: "memoria", label: "Memória", icon: Brain },
     { id: "atendimentos", label: "Atendimentos", icon: MessagesSquare },
     { id: "ajustes", label: "Ajustes", icon: Settings2 },
@@ -799,6 +890,7 @@ export default function Astra() {
             </div>
             {aba === "aprovar" && <Aprovar />}
             {aba === "resultados" && <Resultados />}
+            {aba === "melhorias" && <Melhorias />}
             {aba === "memoria" && <Memoria tenant={tenant} />}
             {aba === "atendimentos" && <Atendimentos tenant={tenant} />}
             {aba === "ajustes" && <Ajustes key={tenant.id} tenant={tenant} onSalvo={carregar} />}
