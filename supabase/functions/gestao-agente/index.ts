@@ -1306,6 +1306,12 @@ async function publicarBg(sb: SupabaseClient, row: any, url: string) {
    nota_min, followups, max_followups, garimpos_dia, nichos
    ============================================================ */
 type PrefsRotina = { ativa: boolean; meta: number; nota_min: number; followups: boolean; max_followups: number; garimpos_dia: number; nichos?: string[] };
+/* telefone fixo (DDD + 8 dígitos começando em 2 a 5): quase nunca tem WhatsApp */
+const ehFixo = (t: unknown) => {
+  let d = String(t ?? "").replace(/\D/g, "");
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  return d.length === 10 && /[2-5]/.test(d[2]);
+};
 const hojeBR = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
 const horaBR = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", minute: "numeric", hour12: false }).replace(":", "."));
 const LIMITE_RODADA_S = 85; // a função tem ~150 s: não começa nada novo depois disso
@@ -1394,7 +1400,8 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
       const ids = (cands || []).map((c) => c.id);
       const { data: usados } = ids.length ? await sb.from("gestao_abordagens").select("prospect_id").in("prospect_id", ids) : { data: [] as { prospect_id: string }[] };
       const ja = new Set((usados || []).map((u) => u.prospect_id));
-      const c = (cands || []).find((x) => !ja.has(x.id) && !tentados.has(x.id));
+      // telefone fixo quase nunca tem WhatsApp: só serve se houver Instagram
+      const c = (cands || []).find((x) => !ja.has(x.id) && !tentados.has(x.id) && (!ehFixo(x.telefone) || x.instagram));
 
       if (!c) {
         // acabaram os bons: garimpa o próximo nicho da fila (muda a cada dia)
@@ -1420,7 +1427,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
         if (passou() > LIMITE_RODADA_S) break;
       }
       try {
-        await gerarAbordagem(sb, { prospect_id: c.id, canal: c.telefone ? "whatsapp" : "instagram", tipo: "primeiro_contato", origem: "rotina" });
+        await gerarAbordagem(sb, { prospect_id: c.id, canal: c.telefone && !ehFixo(c.telefone) ? "whatsapp" : "instagram", tipo: "primeiro_contato", origem: "rotina" });
         feitos++;
         anotar(`mensagem pronta: ${c.nome} (${c.nicho || "sem nicho"})`);
       } catch (e) { anotar(`mensagem para ${c.nome} falhou: ${String((e as Error).message).slice(0, 120)}`); }

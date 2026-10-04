@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play, Wand2, ExternalLink } from "lucide-react";
 import { sb } from "../supabase";
 import { agente } from "../agente";
-import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink } from "../ui";
+import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink, ehFixo } from "../ui";
 import { X, Check } from "lucide-react";
 
 /* ============================================================
@@ -624,20 +624,35 @@ function Aprovar() {
   // a rotina e a Astra podem criar rascunhos a qualquer momento
   useEffect(() => { const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
 
-  const enviar = async (a) => {
+  // 1º clique abre o WhatsApp/Instagram; o lead só vira "abordado" quando você confirma que a mensagem saiu
+  const [abertos, setAbertos] = useState({});
+  const abrir = async (a, via) => {
     const p = a.gestao_prospects;
-    const url = a.canal === "whatsapp" && waLink(p.telefone) ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}`
-      : p.instagram ? `https://ig.me/m/${p.instagram}` : null;
-    if (!url) { setMsg(`${p.nome} não tem WhatsApp nem Instagram.`); return; }
+    const url = via === "whatsapp" ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}` : `https://ig.me/m/${p.instagram}`;
     // abre antes de qualquer espera, senão o navegador bloqueia a nova aba
     window.open(url, "_blank", "noopener");
-    if (a.canal !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada: cole no Direct do Instagram."); } catch { /* sem clipboard */ } }
+    if (via !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada: cole no Direct do Instagram."); } catch { /* sem clipboard */ } }
+    setAbertos((x) => ({ ...x, [a.id]: via }));
+  };
+  const copiar = async (a) => {
+    try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada."); } catch { setMsg("Não consegui copiar; selecione o texto do card."); }
+  };
+  const semWhatsapp = async (a) => {
+    const p = a.gestao_prospects;
+    await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
+    await sb.from("gestao_prospects").update({ status: "descartado", quente_motivo: "Descartado: telefone sem WhatsApp" }).eq("id", p.id);
+    setMsg(`${p.nome} saiu da lista (sem WhatsApp). A rotina põe outro lead no lugar.`);
+    load();
+  };
+  const enviar = async (a) => {
+    const p = a.gestao_prospects;
     const agora = new Date().toISOString();
-    await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora }).eq("id", a.id);
+    const via = abertos[a.id] || a.canal;
+    await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora, canal: via }).eq("id", a.id);
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
     await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
     const prazo = new Date(Date.now() + 3 * 86400e3).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-    await sb.from("gestao_tarefas").insert({ titulo: `Follow-up: ${p.nome}`, descricao: `Abordado por ${a.canal}. Se não respondeu, peça o follow-up para a Astra.`, responsavel: p.responsavel || uid, prazo, prioridade: "media" });
+    await sb.from("gestao_tarefas").insert({ titulo: `Follow-up: ${p.nome}`, descricao: `Abordado por ${via}. Se não respondeu, a Astra prepara o follow-up sozinha.`, responsavel: p.responsavel || uid, prazo, prioridade: "media" });
     load();
   };
   const descartar = async (a) => {
@@ -665,10 +680,27 @@ function Aprovar() {
             {a.gestao_prospects.fonte === "receita" && <Badge color="#fbbf24">CNPJ novo{a.gestao_prospects.aberto_em ? ` · ${fmtDate(a.gestao_prospects.aberto_em)}` : ""}</Badge>}
           </div>
           <p className="whitespace-pre-wrap text-sm text-titanium">{a.texto}</p>
-          <div className="mt-3 flex gap-2">
-            <Btn size="sm" variant="neon" onClick={() => enviar(a)}><Send size={13} /> Aprovar e enviar</Btn>
-            <Btn size="sm" variant="ghost" onClick={() => descartar(a)}><X size={13} /> Descartar</Btn>
-          </div>
+          {(() => {
+            const p = a.gestao_prospects, fixo = ehFixo(p.telefone), temWa = !!waLink(p.telefone);
+            if (abertos[a.id]) return (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="text-sm text-titanium-bright">A mensagem saiu?</span>
+                <Btn size="sm" variant="neon" onClick={() => enviar(a)}><Check size={13} /> Sim, enviei</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => setAbertos((x) => ({ ...x, [a.id]: null }))}>Não deu</Btn>
+                {abertos[a.id] === "whatsapp" && <Btn size="sm" variant="ghost" onClick={() => semWhatsapp(a)}>Número sem WhatsApp</Btn>}
+              </div>
+            );
+            return (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {fixo && <Badge color="#fbbf24">Telefone fixo: pode não ter WhatsApp</Badge>}
+                {temWa && <Btn size="sm" variant={fixo && p.instagram ? "ghost" : "neon"} onClick={() => abrir(a, "whatsapp")}><Send size={13} /> {fixo ? "Tentar no WhatsApp" : "Abrir no WhatsApp"}</Btn>}
+                {p.instagram && <Btn size="sm" variant={!temWa || fixo ? "neon" : "ghost"} onClick={() => abrir(a, "instagram")}><Send size={13} /> Instagram</Btn>}
+                {!temWa && !p.instagram && <span className="text-xs text-titanium">Sem WhatsApp nem Instagram: copie e envie por outro canal.</span>}
+                <Btn size="sm" variant="ghost" onClick={() => copiar(a)}>Copiar</Btn>
+                <Btn size="sm" variant="ghost" onClick={() => descartar(a)}><X size={13} /> Descartar</Btn>
+              </div>
+            );
+          })()}
         </Card>
       ))}
     </div>

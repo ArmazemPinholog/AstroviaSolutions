@@ -30,6 +30,12 @@ export const waLink = (n) => {
   const d = onlyDigits(n);
   return d ? `https://wa.me/${d.length <= 11 ? "55" + d : d}` : null;
 };
+/* telefone fixo (DDD + 8 dígitos começando em 2 a 5): quase nunca tem WhatsApp */
+export const ehFixo = (n) => {
+  let d = onlyDigits(n);
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  return d.length === 10 && /[2-5]/.test(d[2]);
+};
 export const initials = (s) =>
   (s || "?")
     .split(/\s+/)
