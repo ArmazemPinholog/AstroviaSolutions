@@ -509,7 +509,7 @@ REGRAS
 - Formalidade: ${prefs.formalidade === "formal" ? "formal e profissional (trate por você, sem gírias)" : prefs.formalidade === "informal" ? "bem informal, como conversa entre conhecidos" : "equilibrada: profissional, mas leve"}.
 - Abra citando algo concreto e verdadeiro do negócio (a partir dos dados). Nunca elogio genérico.
 - Se houver dono_provavel, cumprimente pelo primeiro nome. Se houver gancho_sugerido ou dores_reais, use UMA delas como ponto de partida, com tato: nunca exponha avaliação negativa de cliente nem pareça crítica; fale como oportunidade.
-- A demo foi personalizada com o nome do negócio: quando oferecer, diga que já deixou uma versão com o nome dele.
+- Não diga que já fez, montou ou deixou uma demo/versão com o nome do negócio. Apenas ofereça mandar o link para ele testar.
 - Aponte UMA oportunidade ligada aos pontos observados (ex.: agendamento manual pelo WhatsApp, falta de site).
 - Termine com ${prefs.cta?.trim() ? `este tipo de chamada: ${prefs.cta.trim()}` : 'uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?")'}.
 ${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
@@ -1253,10 +1253,11 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
   if (!avisado && (concluida || fimDaJanela || manual)) {
     const { data: hoje } = await sb.from("gestao_abordagens").select("gestao_prospects(nome, nicho)").eq("origem", "rotina").eq("tipo", "primeiro_contato")
       .eq("status", "rascunho").gte("criado_em", desde).order("criado_em", { ascending: false }).limit(20);
+    const h = horaBR(), oi = h < 12 ? "Bom dia!" : h < 18 ? "Boa tarde!" : "Boa noite!";
     const nomes = [...new Set((hoje || []).map((x: any) => x.gestao_prospects?.nome).filter(Boolean))].slice(0, 3);
     await avisarDono(sb, leads || followups
-      ? `Bom dia! A rotina de hoje deixou ${leads} ${leads === 1 ? "lead novo" : "leads novos"} com mensagem${followups ? ` e ${followups} follow-up${followups > 1 ? "s" : ""}` : ""} em Aprovar envios.${nomes.length ? ` Entre eles: ${nomes.join(", ")}.` : ""} Nada foi enviado: é só revisar e aprovar.${concluida ? "" : ` Fiquei abaixo da meta de ${r.meta}: ${erro ? "deu um erro no caminho" : "faltaram leads bons no perfil"}.`}`
-      : `Bom dia! Rodei a prospecção de hoje, mas não encontrei leads bons o suficiente para a meta de ${r.meta}.${erro ? " Deu um erro no caminho; vale olhar o painel de resultados." : " Posso testar outro nicho ou bairro se você quiser."}`);
+      ? `${oi} A rotina de hoje deixou ${leads} ${leads === 1 ? "lead novo" : "leads novos"} com mensagem${followups ? ` e ${followups} follow-up${followups > 1 ? "s" : ""}` : ""} em Aprovar envios.${nomes.length ? ` Entre eles: ${nomes.join(", ")}.` : ""} Nada foi enviado: é só revisar e aprovar.${concluida ? "" : ` Fiquei abaixo da meta de ${r.meta}: ${erro ? "deu um erro no caminho" : "faltaram leads bons no perfil"}.`}`
+      : `${oi} Rodei a prospecção de hoje, mas não encontrei leads bons o suficiente para a meta de ${r.meta}.${erro ? " Deu um erro no caminho; vale olhar o painel de resultados." : " Posso testar outro nicho ou bairro se você quiser."}`);
     avisado = true;
   }
   await sb.from("astra_rotinas").update({
