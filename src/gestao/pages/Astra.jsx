@@ -589,7 +589,10 @@ function Aprovar() {
       {lista.map((a) => (
         <Card key={a.id} className="p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <p className="font-medium">{a.gestao_prospects.nome}</p>
+            <div>
+              <p className="font-medium">{a.gestao_prospects.nome}</p>
+              {(a.gestao_prospects.telefone || a.gestao_prospects.instagram) && <p className="text-xs text-titanium">{a.gestao_prospects.telefone || `@${a.gestao_prospects.instagram.replace(/^@/, "")}`}</p>}
+            </div>
             {a.gestao_prospects.score != null && <Badge color="#22d3ee">Nota {a.gestao_prospects.score}</Badge>}
             <Badge color="#a1a1aa">{a.canal}{a.tipo === "followup" ? " · follow-up" : ""}</Badge>
             {a.origem === "rotina" && <Badge color="#a78bfa">Rotina da Astra</Badge>}
