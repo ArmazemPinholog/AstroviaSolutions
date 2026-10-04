@@ -16,6 +16,7 @@ Proteção de dados: o nome empresarial de MEI traz o CPF do dono no fim; o CPF 
 Uso: python3 scripts/cnpj_novos.py            (baixa, filtra e envia)
      python3 scripts/cnpj_novos.py --teste    (só conta, não envia)
 """
+import base64
 import csv
 import io
 import json
@@ -23,6 +24,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import date, datetime, timedelta
@@ -60,30 +62,72 @@ def log(*a):
     print(datetime.now().strftime("%H:%M:%S"), *a, flush=True)
 
 
-def existe(url):
+UA = {"User-Agent": "Mozilla/5.0 Astrovia"}
+SITE_RECEITA = "https://arquivos.receitafederal.gov.br"
+# compartilhamento público (Nextcloud) onde a Receita passou a publicar os dados do CNPJ
+SHARE = os.environ.get("RECEITA_SHARE", "YggdBLfdninEJX9")
+
+
+def pedir(url, metodo="GET", headers=None, dados=None, timeout=60):
+    req = urllib.request.Request(url, method=metodo, data=dados, headers={**UA, **(headers or {})})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def status(url, **kw):
     try:
-        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "Mozilla/5.0 Astrovia"})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return r.status == 200
-    except Exception:
-        return False
+        with pedir(url, **kw) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except Exception as e:
+        return f"erro {type(e).__name__}"
 
 
-def mes_mais_recente():
-    ano, mes = date.today().year, date.today().month
-    for _ in range(4):
-        m = f"{ano}-{mes:02d}"
-        if existe(f"{BASE}/{m}/Estabelecimentos0.zip"):
-            return m
-        ano, mes = (ano, mes - 1) if mes > 1 else (ano - 1, 12)
-    raise SystemExit(f"Não achei os arquivos da Receita em {BASE}/AAAA-MM/. Confira o endereço (variável RECEITA_BASE).")
+def webdav_auth():
+    return {"Authorization": "Basic " + base64.b64encode(f"{SHARE}:".encode()).decode()}
 
 
-def baixar(url, destino):
+class Fonte:
+    """onde estão os zips: listagem antiga (BASE/AAAA-MM/arquivo) ou WebDAV público do compartilhamento"""
+
+    def __init__(self):
+        self.tipo = None
+        # 1) listagem antiga
+        try:
+            with pedir(f"{BASE}/", timeout=60) as r:
+                meses = sorted(set(re.findall(r'href="(\d{4}-\d{2})/?"', r.read().decode("utf-8", "ignore"))))
+            if meses:
+                self.tipo, self.meses = "listagem", meses
+                return
+        except Exception:
+            pass
+        # 2) WebDAV do compartilhamento
+        try:
+            with pedir(f"{SITE_RECEITA}/public.php/webdav/", metodo="PROPFIND", headers={**webdav_auth(), "Depth": "1"}, timeout=60) as r:
+                corpo = r.read().decode("utf-8", "ignore")
+            meses = sorted(set(re.findall(r"/public\.php/webdav/(\d{4}-\d{2})/?<", corpo)))
+            if meses:
+                self.tipo, self.meses = "webdav", meses
+                return
+        except Exception:
+            pass
+        log("diagnóstico (status HTTP):",
+            {"listagem": status(f"{BASE}/"),
+             "webdav": status(f"{SITE_RECEITA}/public.php/webdav/", metodo="PROPFIND", headers={**webdav_auth(), "Depth": "1"}),
+             "compartilhamento": status(f"{SITE_RECEITA}/index.php/s/{SHARE}")})
+        raise SystemExit("Não achei os arquivos da Receita. Ajuste as variáveis RECEITA_BASE ou RECEITA_SHARE no GitHub.")
+
+    def url(self, mes, nome):
+        return f"{BASE}/{mes}/{nome}" if self.tipo == "listagem" else f"{SITE_RECEITA}/public.php/webdav/{mes}/{nome}"
+
+    def headers(self):
+        return webdav_auth() if self.tipo == "webdav" else {}
+
+
+def baixar(fonte, mes, nome, destino):
     for tentativa in range(5):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 Astrovia"})
-            with urllib.request.urlopen(req, timeout=300) as r, open(destino, "wb") as f:
+            with pedir(fonte.url(mes, nome), headers=fonte.headers(), timeout=300) as r, open(destino, "wb") as f:
                 while True:
                     bloco = r.read(1 << 20)
                     if not bloco:
@@ -91,9 +135,9 @@ def baixar(url, destino):
                     f.write(bloco)
             return
         except Exception as e:
-            log(f"falha ao baixar ({e}); tentando de novo")
+            log(f"falha ao baixar {nome} ({e}); tentando de novo")
             time.sleep(10 * (tentativa + 1))
-    raise SystemExit(f"Não consegui baixar {url}")
+    raise SystemExit(f"Não consegui baixar {nome} de {mes}")
 
 
 def linhas(zip_path, contem=None):
@@ -163,14 +207,15 @@ def main():
     if not teste and len(CHAVE) < 32:
         raise SystemExit("Falta o secret ASTRA_CHAVE_CNPJ no GitHub (Settings → Secrets and variables → Actions).")
     os.makedirs(PASTA, exist_ok=True)
-    mes = os.environ.get("MES") or mes_mais_recente()
+    fonte = Fonte()
+    mes = os.environ.get("MES") or fonte.meses[-1]
     corte = (date.today() - timedelta(days=DIAS)).strftime("%Y%m%d")
-    log(f"dados de {mes}; abertos desde {corte}; {len(CNAES)} atividades")
+    log(f"dados de {mes} ({fonte.tipo}); abertos desde {corte}; {len(CNAES)} atividades")
 
     achados = {}
     for n in range(10):
         caminho = f"{PASTA}/Estabelecimentos{n}.zip"
-        baixar(f"{BASE}/{mes}/Estabelecimentos{n}.zip", caminho)
+        baixar(fonte, mes, f"Estabelecimentos{n}.zip", caminho)
         antes = len(achados)
         for c in filtrar_estabelecimentos(linhas(caminho, f'"{MUNICIPIO}"'), corte):
             achados[c[0] + c[1] + c[2]] = c
@@ -183,7 +228,7 @@ def main():
         if not basicos - empresas.keys():
             break
         caminho = f"{PASTA}/Empresas{n}.zip"
-        baixar(f"{BASE}/{mes}/Empresas{n}.zip", caminho)
+        baixar(fonte, mes, f"Empresas{n}.zip", caminho)
         # layout: 0 cnpj_basico, 1 razão social, 2 natureza jurídica, 3 qualificação, 4 capital, 5 porte
         for c in linhas(caminho):
             if c and c[0] in basicos and len(c) > 2:
