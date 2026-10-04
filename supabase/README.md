@@ -92,9 +92,17 @@ Migração `20261005_astra_rotina.sql`. Nada é enviado a lead nenhum sem aprova
 | Rotina diária | `pg_cron` (job `astra-rotina-diaria`) chama `gestao-agente` com a ação `rotina` a cada 5 min das 6h às 8h55 (Brasília). Cada rodada faz um pedaço: follow-ups de quem não respondeu em 3 dias, depois leads novos (garimpa no Google Maps quando faltam, investiga e escreve) até a meta do dia (padrão 10). No fim avisa na conversa da Astra. Diário em `astra_rotinas`. |
 | Ajustes da rotina | Astra → Resultados (ligar/desligar, leads por dia, nota mínima, follow-ups) ou `gestao_agente_config.prefs.rotina` (`ativa`, `meta`, `nota_min`, `followups`, `max_followups`, `garimpos_dia`, `nichos`). |
 | Chaves internas | Ficam só no Vault: `astra_chave_rotina` (só a ação `rotina`) e `astra_chave_cnpj` (só `importar_cnpj`). A função compara em tempo constante e usa o service role só nessas ações. Para trocar: `update vault.secrets set secret = encode(gen_random_bytes(32),'hex') where name = '...'` (e atualize o secret do GitHub no caso da `astra_chave_cnpj`). |
-| CNPJs novos | `.github/workflows/cnpj-novos.yml` (dias 5 e 20) roda `scripts/cnpj_novos.py`: baixa os dados abertos do CNPJ da Receita, filtra Curitiba + clínicas, salões, barbearias e oficinas abertos nos últimos 90 dias e manda para `importar_cnpj`. CPF de MEI é removido; só o primeiro nome vira "dono". Precisa do secret `ASTRA_CHAVE_CNPJ` no GitHub (valor: `select decrypted_secret from vault.decrypted_secrets where name = 'astra_chave_cnpj';`). Se a Receita mudar o endereço dos arquivos, crie a variável `RECEITA_BASE` no GitHub. |
+| CNPJs novos | `.github/workflows/cnpj-novos.yml` (dias 5 e 20) roda `scripts/cnpj_novos.py`: baixa os dados abertos do CNPJ da Receita, filtra Curitiba + clínicas, salões, barbearias e oficinas abertos nos últimos 90 dias e manda para `importar_cnpj`. CPF de MEI é removido; só o primeiro nome vira "dono". Precisa do secret `ASTRA_CHAVE_CNPJ` no GitHub (valor: `select decrypted_secret from vault.decrypted_secrets where name = 'astra_chave_cnpj';`). O servidor da Receita **recusa conexões de fora do Brasil**, então o job precisa rodar numa máquina no Brasil: registre um runner próprio (Settings → Actions → Runners) e crie a variável `CNPJ_RUNNER` com o rótulo dele; sem ela o agendamento fica parado. Alternativa simples: rodar no seu PC (abaixo). Se a Receita mudar o endereço, use as variáveis `RECEITA_BASE` ou `RECEITA_SHARE`. |
 | Motor de IA | `gestao-agente` usa o Claude quando há `ANTHROPIC_API_KEY`: Sonnet 5.5 escreve (mensagens, respostas, conteúdo) e Haiku 4.5 monta o dossiê. Gemini e Poe ficam de reserva. Opcional: `CLAUDE_MODEL`, `CLAUDE_MODEL_ANALISE`. |
 | Painel | Astra → Resultados: leads (por fonte), abordados, respostas, reuniões, funil e o diário da rotina. |
+
+### CNPJs novos rodando no seu PC (Windows)
+Precisa só do Python 3. No PowerShell, uma vez:
+```powershell
+setx ASTRA_CHAVE_CNPJ "<valor da astra_chave_cnpj>"
+schtasks /create /tn "Astra CNPJs novos" /sc monthly /d 20 /st 07:30 /tr "py C:\caminho\AstroviaSolutions\scripts\cnpj_novos.py"
+```
+Teste antes com `py scripts\cnpj_novos.py --teste` (só conta, não envia).
 
 ### Publicar as funções
 O repositório é público, então as funções podem ser publicadas com um `index.ts` de uma linha que importa o código

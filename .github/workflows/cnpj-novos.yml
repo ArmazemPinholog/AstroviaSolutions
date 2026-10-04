@@ -3,6 +3,11 @@
 # Os leads entram como "novo" na Prospecção e a rotina diária da Astra investiga e escreve
 # as mensagens em rascunho. Nada é enviado sem aprovação.
 #
+# O servidor da Receita recusa conexões de fora do Brasil, e os runners do GitHub ficam nos EUA.
+# Por isso o agendamento só roda quando existe um runner próprio no Brasil: registre o seu PC em
+# Settings → Actions → Runners e crie a variável CNPJ_RUNNER com o rótulo dele (ex.: self-hosted).
+# Sem isso, rode o script direto no seu computador (veja supabase/README.md).
+#
 # Precisa do secret ASTRA_CHAVE_CNPJ (Settings → Secrets and variables → Actions).
 # O valor está no Vault do Supabase: SQL Editor →
 #   select decrypted_secret from vault.decrypted_secrets where name = 'astra_chave_cnpj';
@@ -30,7 +35,8 @@ concurrency:
 
 jobs:
   importar:
-    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.CNPJ_RUNNER != ''
+    runs-on: ${{ vars.CNPJ_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4

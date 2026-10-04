@@ -15,6 +15,10 @@ Proteção de dados: o nome empresarial de MEI traz o CPF do dono no fim; o CPF 
 
 Uso: python3 scripts/cnpj_novos.py            (baixa, filtra e envia)
      python3 scripts/cnpj_novos.py --teste    (só conta, não envia)
+
+Onde rodar: o servidor de arquivos da Receita recusa conexões de fora do Brasil (os runners
+do GitHub ficam nos EUA). Rode num computador no Brasil (Windows: Agendador de Tarefas, só
+Python 3, sem dependências) ou num runner próprio do GitHub (variável CNPJ_RUNNER).
 """
 import base64
 import csv
@@ -23,6 +27,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -34,7 +39,7 @@ MUNICIPIO = os.environ.get("MUNICIPIO_RECEITA", "7535")  # Curitiba
 DIAS = int(os.environ.get("DIAS", "90"))
 FUNCAO = os.environ.get("ASTRA_URL", "https://jfariprplbmuorzdhhav.supabase.co/functions/v1/gestao-agente")
 CHAVE = os.environ.get("ASTRA_CHAVE_CNPJ", "")
-PASTA = os.environ.get("PASTA_TMP", "/tmp/cnpj")
+PASTA = os.environ.get("PASTA_TMP") or os.path.join(tempfile.gettempdir(), "cnpj")
 
 # CNAE principal → nicho do lead
 CNAES = {
