@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu } from "lucide-react";
 import { sb } from "../supabase";
-import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, fmtDate } from "../ui";
+import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, fmtDate, waLink } from "../ui";
+import { X, Check } from "lucide-react";
 
 /* ============================================================
    ASTRA — a consciência da Astrovia
@@ -115,7 +116,7 @@ function Orb({ estado, nivelRef, size = 168 }) {
 }
 
 /* ---------- conversa ---------- */
-function Conversa({ modo }) {
+export function Conversa({ modo, compacto = false }) {
   const [, redesenhar] = useState(0);
   const slot = loja[modo];
   const msgs = slot.msgs || [];
@@ -229,9 +230,9 @@ function Conversa({ modo }) {
   const rotulo = { idle: "em espera", ouvindo: "ouvindo", pensando: "pensando", falando: "respondendo" }[estado];
 
   return (
-    <Card className="flex h-[min(80vh,780px)] min-h-[520px] flex-col overflow-hidden">
+    <Card className={`flex flex-col overflow-hidden ${compacto ? "h-full rounded-none border-0" : "h-[min(80vh,780px)] min-h-[520px]"}`}>
       <div className="flex items-center gap-4 border-b border-white/[0.06] p-4">
-        <Orb estado={estado} nivelRef={nivel} size={92} />
+        <Orb estado={estado} nivelRef={nivel} size={compacto ? 56 : 92} />
         <div className="min-w-0 flex-1">
           <p className="font-display text-2xl font-semibold tracking-[0.14em]">
             <span className="bg-gradient-to-r from-[#22d3ee] to-[#ff2fd0] bg-clip-text text-transparent">ASTRA</span>
@@ -282,7 +283,7 @@ function Conversa({ modo }) {
       </div>
 
       <div className="border-t border-white/[0.06] p-4">
-        {modo === "dono" && (
+        {modo === "dono" && !compacto && (
           <div className="mb-3 flex flex-wrap gap-2">
             {ATALHOS.map((a) => (
               <button key={a} onClick={() => enviar(a)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-titanium transition hover:border-[#22d3ee]/50 hover:text-white">{a}</button>
@@ -528,10 +529,86 @@ function Ajustes({ tenant, onSalvo }) {
 }
 
 /* ---------- página ---------- */
+/* ---------- captações para aprovar ---------- */
+function Aprovar() {
+  const { uid } = useG();
+  const [lista, setLista] = useState(null);
+  const [msg, setMsg] = useState("");
+  const load = useCallback(async () => {
+    const { data } = await sb.from("gestao_abordagens").select("id, canal, tipo, texto, prospect_id, gestao_prospects(id, nome, nicho, cidade, telefone, instagram, score, responsavel)")
+      .eq("status", "rascunho").order("criado_em", { ascending: false }).limit(30);
+    // uma mensagem por lead (a mais recente)
+    const vistos = new Set();
+    setLista((data || []).filter((a) => a.gestao_prospects && !vistos.has(a.prospect_id) && vistos.add(a.prospect_id)));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const enviar = async (a) => {
+    const p = a.gestao_prospects;
+    const url = a.canal === "whatsapp" && waLink(p.telefone) ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}`
+      : p.instagram ? `https://ig.me/m/${p.instagram}` : null;
+    if (!url) { setMsg(`${p.nome} não tem WhatsApp nem Instagram.`); return; }
+    if (a.canal !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); } catch { /* sem clipboard */ } }
+    window.open(url, "_blank", "noopener");
+    const agora = new Date().toISOString();
+    await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora }).eq("id", a.id);
+    await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
+    await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
+    const prazo = new Date(Date.now() + 3 * 86400e3).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+    await sb.from("gestao_tarefas").insert({ titulo: `Follow-up: ${p.nome}`, descricao: `Abordado por ${a.canal}. Se não respondeu, peça o follow-up para a Astra.`, responsavel: p.responsavel || uid, prazo, prioridade: "media" });
+    load();
+  };
+  const descartar = async (a) => {
+    await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", a.prospect_id).eq("status", "rascunho");
+    load();
+  };
+
+  if (!lista) return <Empty>Carregando…</Empty>;
+  return (
+    <div className="space-y-3">
+      {msg && <p className="text-sm text-[#ff9be9]">{msg}</p>}
+      {!lista.length && <Empty>Nada para aprovar. Peça para a Astra: "Ache 3 clientes novos pra mim e prepare as mensagens."</Empty>}
+      {lista.map((a) => (
+        <Card key={a.id} className="p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <p className="font-medium">{a.gestao_prospects.nome}</p>
+            {a.gestao_prospects.score != null && <Badge color="#22d3ee">Nota {a.gestao_prospects.score}</Badge>}
+            <Badge color="#a1a1aa">{a.canal}{a.tipo === "followup" ? " · follow-up" : ""}</Badge>
+          </div>
+          <p className="whitespace-pre-wrap text-sm text-titanium">{a.texto}</p>
+          <div className="mt-3 flex gap-2">
+            <Btn size="sm" variant="neon" onClick={() => enviar(a)}><Send size={13} /> Aprovar e enviar</Btn>
+            <Btn size="sm" variant="ghost" onClick={() => descartar(a)}><X size={13} /> Descartar</Btn>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- Astra flutuante (acompanha todas as páginas) ---------- */
+export function AstraFlutuante() {
+  const [aberta, setAberta] = useState(false);
+  return (
+    <>
+      {aberta && (
+        <div className="fixed inset-x-0 bottom-0 z-50 h-[75vh] border-t border-white/10 bg-[#030305] shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[600px] sm:w-[400px] sm:rounded-2xl sm:border">
+          <button onClick={() => setAberta(false)} aria-label="Fechar a Astra" className="absolute right-3 top-3 z-10 rounded-full p-1.5 text-titanium hover:text-white"><X size={16} /></button>
+          <Conversa modo="dono" compacto />
+        </div>
+      )}
+      <button onClick={() => setAberta((v) => !v)} aria-label="Falar com a Astra"
+        className="fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full border border-white/15 bg-[#030305] shadow-[0_0_24px_rgba(34,211,238,0.35)]">
+        <Sparkles size={22} className="text-[#22d3ee]" />
+      </button>
+    </>
+  );
+}
+
 export default function Astra() {
   const [tenant, setTenant] = useState(null);
   const [modo, setModo] = useState("dono");
-  const [aba, setAba] = useState("memoria");
+  const [aba, setAba] = useState("aprovar");
   const carregar = useCallback(async () => {
     const { data } = await sb.from("astra_tenants").select("*").eq("slug", TENANT).maybeSingle();
     setTenant(data);
@@ -539,6 +616,7 @@ export default function Astra() {
   useEffect(() => { carregar(); }, [carregar]);
 
   const ABAS = [
+    { id: "aprovar", label: "Aprovar envios", icon: Check },
     { id: "memoria", label: "Memória", icon: Brain },
     { id: "atendimentos", label: "Atendimentos", icon: MessagesSquare },
     { id: "ajustes", label: "Ajustes", icon: Settings2 },
@@ -564,6 +642,7 @@ export default function Astra() {
                 </button>
               ))}
             </div>
+            {aba === "aprovar" && <Aprovar />}
             {aba === "memoria" && <Memoria tenant={tenant} />}
             {aba === "atendimentos" && <Atendimentos tenant={tenant} />}
             {aba === "ajustes" && <Ajustes key={tenant.id} tenant={tenant} onSalvo={carregar} />}

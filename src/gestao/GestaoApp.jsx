@@ -15,7 +15,7 @@ import Financeiro from "./pages/Financeiro";
 import Tarefas from "./pages/Tarefas";
 import Equipe from "./pages/Equipe";
 import Perfil from "./pages/Perfil";
-import Astra from "./pages/Astra";
+import Astra, { AstraFlutuante } from "./pages/Astra";
 import logo from "../assets/logo.png";
 
 /* ============================================================
@@ -310,6 +310,7 @@ function App({ session, status }) {
             {erro && <Card className="mb-4 border-[#ff2fd0]/30 p-4 text-sm text-[#ff9be9]">Erro ao carregar: {erro}</Card>}
             {loading ? <p className="py-20 text-center text-sm text-titanium">Carregando…</p> : <Page />}
           </main>
+          {page !== "astra" && <AstraFlutuante />}
         </div>
       </div>
     </Ctx.Provider>
