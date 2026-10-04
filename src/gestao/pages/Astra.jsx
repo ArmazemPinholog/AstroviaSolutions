@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu } from "lucide-react";
+import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play } from "lucide-react";
 import { sb } from "../supabase";
-import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, fmtDate, waLink } from "../ui";
+import { agente } from "../agente";
+import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink } from "../ui";
 import { X, Check } from "lucide-react";
 
 /* ============================================================
@@ -535,7 +536,7 @@ function Aprovar() {
   const [lista, setLista] = useState(null);
   const [msg, setMsg] = useState("");
   const load = useCallback(async () => {
-    const { data } = await sb.from("gestao_abordagens").select("id, canal, tipo, texto, prospect_id, gestao_prospects(id, nome, nicho, cidade, telefone, instagram, score, responsavel)")
+    const { data } = await sb.from("gestao_abordagens").select("id, canal, tipo, texto, origem, prospect_id, gestao_prospects(id, nome, nicho, cidade, telefone, instagram, score, responsavel, fonte, aberto_em)")
       .eq("status", "rascunho").order("criado_em", { ascending: false }).limit(30);
     // uma mensagem por lead (a mais recente)
     const vistos = new Set();
@@ -567,13 +568,15 @@ function Aprovar() {
   return (
     <div className="space-y-3">
       {msg && <p className="text-sm text-[#ff9be9]">{msg}</p>}
-      {!lista.length && <Empty>Nada para aprovar. Peça para a Astra: "Ache 3 clientes novos pra mim e prepare as mensagens."</Empty>}
+      {!lista.length && <Empty>Nada para aprovar. A rotina deixa leads novos aqui toda manhã; ou peça para a Astra: "Ache 3 clientes novos pra mim e prepare as mensagens."</Empty>}
       {lista.map((a) => (
         <Card key={a.id} className="p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <p className="font-medium">{a.gestao_prospects.nome}</p>
             {a.gestao_prospects.score != null && <Badge color="#22d3ee">Nota {a.gestao_prospects.score}</Badge>}
             <Badge color="#a1a1aa">{a.canal}{a.tipo === "followup" ? " · follow-up" : ""}</Badge>
+            {a.origem === "rotina" && <Badge color="#a78bfa">Rotina da Astra</Badge>}
+            {a.gestao_prospects.fonte === "receita" && <Badge color="#fbbf24">CNPJ novo{a.gestao_prospects.aberto_em ? ` · ${fmtDate(a.gestao_prospects.aberto_em)}` : ""}</Badge>}
           </div>
           <p className="whitespace-pre-wrap text-sm text-titanium">{a.texto}</p>
           <div className="mt-3 flex gap-2">
@@ -582,6 +585,139 @@ function Aprovar() {
           </div>
         </Card>
       ))}
+    </div>
+  );
+}
+
+/* ---------- resultados da prospecção + rotina diária ---------- */
+const PERIODOS = [[7, "7 dias"], [30, "30 dias"], [90, "90 dias"]];
+const FONTE_NOME = { google: "Google", instagram: "Instagram", manual: "Manual", receita: "CNPJ novo" };
+const ROTINA_STATUS = { rodando: ["Em andamento", "#22d3ee"], concluida: ["Meta batida", "#34d399"], parcial: ["Abaixo da meta", "#fbbf24"], erro: ["Com erro", "#ff2fd0"] };
+
+function Resultados() {
+  const [dias, setDias] = useState(7);
+  const [d, setD] = useState(null);
+  const [rotinas, setRotinas] = useState([]);
+  const [prefs, setPrefs] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [rodando, setRodando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    const [nov, env, rec, reu, notas, rot, cfg, rasc] = await Promise.all([
+      sb.from("gestao_prospects").select("fonte").gte("criado_em", desde).limit(5000),
+      sb.from("gestao_abordagens").select("prospect_id, tipo, origem").eq("status", "enviada").in("tipo", ["primeiro_contato", "followup"]).gte("enviada_em", desde).limit(5000),
+      sb.from("gestao_abordagens").select("prospect_id").eq("tipo", "recebida").gte("criado_em", desde).limit(5000),
+      sb.from("astra_reunioes").select("id", { count: "exact", head: true }).neq("status", "cancelada").gte("criado_em", desde),
+      sb.from("gestao_notas").select("id", { count: "exact", head: true }).eq("tipo", "reuniao").gte("criado_em", desde),
+      sb.from("astra_rotinas").select("*").order("dia", { ascending: false }).limit(7),
+      sb.from("gestao_agente_config").select("prefs").eq("id", "padrao").maybeSingle(),
+      sb.from("gestao_abordagens").select("id", { count: "exact", head: true }).eq("status", "rascunho").in("tipo", ["primeiro_contato", "followup"]),
+    ]);
+    const porFonte = {};
+    (nov.data || []).forEach((x) => { porFonte[x.fonte] = (porFonte[x.fonte] || 0) + 1; });
+    const primeiros = (env.data || []).filter((x) => x.tipo === "primeiro_contato");
+    const abordados = new Set(primeiros.map((x) => x.prospect_id)).size;
+    const responderam = new Set((rec.data || []).map((x) => x.prospect_id)).size;
+    setD({
+      leads: nov.data?.length || 0, porFonte, abordados, responderam,
+      daRotina: new Set(primeiros.filter((x) => x.origem === "rotina").map((x) => x.prospect_id)).size,
+      followups: (env.data || []).length - primeiros.length,
+      reunioes: (reu.count || 0) + (notas.count || 0),
+      aguardando: rasc.count || 0,
+    });
+    setRotinas(rot.data || []);
+    const r = cfg.data?.prefs?.rotina || {};
+    setPrefs({ todos: cfg.data?.prefs || {}, ativa: r.ativa !== false, meta: r.meta ?? 10, nota_min: r.nota_min ?? 40, followups: r.followups !== false });
+  }, [dias]);
+  useEffect(() => { carregar(); }, [carregar]);
+  // enquanto a rotina roda, atualiza sozinho
+  useEffect(() => {
+    if (rotinas[0]?.status !== "rodando" && !rodando) return;
+    const id = setInterval(carregar, 15000);
+    return () => clearInterval(id);
+  }, [rotinas, rodando, carregar]);
+
+  const salvar = async () => {
+    const rotina = { ativa: prefs.ativa, meta: Math.min(30, Math.max(1, Number(prefs.meta) || 10)), nota_min: Math.min(90, Math.max(0, Number(prefs.nota_min) || 0)), followups: prefs.followups };
+    const { error } = await sb.from("gestao_agente_config").update({ prefs: { ...prefs.todos, rotina: { ...(prefs.todos.rotina || {}), ...rotina } } }).eq("id", "padrao");
+    setMsg(error ? error.message : "Rotina salva ✓");
+    if (!error) carregar();
+  };
+  const rodarAgora = async () => {
+    setRodando(true); setMsg("");
+    try { await agente("rotina"); setMsg("Rotina iniciada. Leva alguns minutos; os rascunhos aparecem em Aprovar envios."); }
+    catch (e) { setMsg(e.message); }
+    setTimeout(() => { setRodando(false); carregar(); }, 20000);
+  };
+
+  if (!d || !prefs) return <Empty>Carregando…</Empty>;
+  const hoje = rotinas[0]?.dia === new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }) ? rotinas[0] : null;
+  const funil = [["Leads", d.leads, "#8a8f98"], ["Abordados", d.abordados, "#60a5fa"], ["Responderam", d.responderam, "#fbbf24"], ["Reuniões", d.reunioes, "#34d399"]];
+  const maior = Math.max(1, ...funil.map((f) => f[1]));
+  const taxa = d.abordados ? Math.round((d.responderam / d.abordados) * 100) : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 rounded-xl border border-white/10 p-1">
+        {PERIODOS.map(([v, l]) => (
+          <button key={v} onClick={() => setDias(v)} className={`flex-1 rounded-lg px-3 py-1.5 font-mono text-[0.62rem] uppercase tracking-[0.14em] transition ${dias === v ? "bg-white text-[#030305]" : "text-titanium hover:text-white"}`}>{l}</button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Stat label="Leads novos" value={d.leads} icon={Users} color="#8a8f98" sub={Object.entries(d.porFonte).map(([f, n]) => `${FONTE_NOME[f] || f} ${n}`).join(" · ") || "nenhum no período"} />
+        <Stat label="Abordados" value={d.abordados} icon={Send} color="#60a5fa" sub={`${d.daRotina} da rotina · ${d.followups} follow-ups`} />
+        <Stat label="Respostas" value={d.responderam} icon={MessageCircle} color="#fbbf24" sub={taxa === null ? "sem abordagens no período" : `${taxa}% de quem foi abordado`} />
+        <Stat label="Reuniões" value={d.reunioes} icon={CalendarCheck} color="#34d399" sub={d.aguardando ? `${d.aguardando} mensagens esperando aprovação` : "nada esperando aprovação"} />
+      </div>
+
+      <Card className="p-4">
+        <p className="mb-3 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee]">Funil da prospecção</p>
+        <ul className="space-y-2">
+          {funil.map(([nome, v, cor]) => (
+            <li key={nome} className="grid grid-cols-[96px_1fr_40px] items-center gap-3 text-sm">
+              <span className="text-titanium">{nome}</span>
+              <span className="h-2.5 overflow-hidden rounded-full bg-white/[0.05]"><span className="block h-full rounded-full" style={{ width: `${(v / maior) * 100}%`, background: cor }} /></span>
+              <span className="text-right tabular-nums text-white">{v}</span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      <Card className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee]">Rotina diária · toda manhã, 6h às 9h</p>
+          <Btn size="sm" variant="ghost" onClick={rodarAgora} disabled={rodando}><Play size={13} /> {rodando ? "Rodando…" : "Rodar agora"}</Btn>
+        </div>
+        {hoje ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge color={(ROTINA_STATUS[hoje.status] || ROTINA_STATUS.rodando)[1]}>{(ROTINA_STATUS[hoje.status] || ROTINA_STATUS.rodando)[0]}</Badge>
+            <span className="text-titanium-bright">Hoje: {hoje.leads_preparados}/{hoje.detalhes?.meta ?? prefs.meta} leads com mensagem · {hoje.followups} follow-ups · {hoje.garimpos} garimpos</span>
+          </div>
+        ) : <p className="text-sm text-titanium">Ainda não rodou hoje.</p>}
+        {hoje?.erro && <p className="text-sm text-[#ff9be9]">{hoje.erro}</p>}
+        {hoje?.detalhes?.log?.length > 0 && (
+          <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg bg-[#0a0a11] p-2 font-mono text-[0.68rem] text-titanium">
+            {hoje.detalhes.log.slice(-12).reverse().map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        )}
+        {rotinas.length > 1 && (
+          <p className="text-xs text-titanium">Últimos dias: {rotinas.slice(1).map((r) => `${fmtDate(r.dia).slice(0, 5)} ${r.leads_preparados}`).join(" · ")}</p>
+        )}
+        <div className="grid gap-3 border-t border-white/[0.06] pt-3 sm:grid-cols-3">
+          <Field label="Leads por dia"><Input type="number" min="1" max="30" value={prefs.meta} onChange={(e) => setPrefs({ ...prefs, meta: e.target.value })} /></Field>
+          <Field label="Nota mínima" hint="0 a 90"><Input type="number" min="0" max="90" value={prefs.nota_min} onChange={(e) => setPrefs({ ...prefs, nota_min: e.target.value })} /></Field>
+          <div className="flex flex-col justify-end gap-2 text-sm text-titanium-bright">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={prefs.ativa} onChange={(e) => setPrefs({ ...prefs, ativa: e.target.checked })} /> Rotina ligada</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={prefs.followups} onChange={(e) => setPrefs({ ...prefs, followups: e.target.checked })} /> Follow-ups em 3 dias</label>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-titanium">Nada é enviado sozinho: tudo vira rascunho para você aprovar.</p>
+          <Btn size="sm" variant="neon" onClick={salvar}><Save size={13} /> Salvar</Btn>
+        </div>
+        {msg && <p className="text-sm text-[#22d3ee]">{msg}</p>}
+      </Card>
     </div>
   );
 }
@@ -617,6 +753,7 @@ export default function Astra() {
 
   const ABAS = [
     { id: "aprovar", label: "Aprovar envios", icon: Check },
+    { id: "resultados", label: "Resultados", icon: BarChart3 },
     { id: "memoria", label: "Memória", icon: Brain },
     { id: "atendimentos", label: "Atendimentos", icon: MessagesSquare },
     { id: "ajustes", label: "Ajustes", icon: Settings2 },
@@ -643,6 +780,7 @@ export default function Astra() {
               ))}
             </div>
             {aba === "aprovar" && <Aprovar />}
+            {aba === "resultados" && <Resultados />}
             {aba === "memoria" && <Memoria tenant={tenant} />}
             {aba === "atendimentos" && <Atendimentos tenant={tenant} />}
             {aba === "ajustes" && <Ajustes key={tenant.id} tenant={tenant} onSalvo={carregar} />}

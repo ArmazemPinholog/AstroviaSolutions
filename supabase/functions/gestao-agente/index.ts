@@ -6,15 +6,20 @@
 //   garimpar_google    → busca negócios no Google Maps (Places API New), filtrando pelo cliente ideal
 //   garimpar_instagram → hashtag e/ou lista de @ via Graph API (Business Discovery)
 //   investigar         → lê avaliações do Google + site do lead e monta o dossiê (dono, dores, momento quente)
-//   gerar_abordagem    → escreve a mensagem (Gemini grátis; Poe só como reserva)
+//   gerar_abordagem    → escreve a mensagem (Claude; Gemini e Poe como reserva)
 //   responder          → o lead respondeu: sugere a próxima mensagem e, se for a hora, a proposta
-//   criar_conteudo     → legenda/roteiro com Gemini + imagem/vídeo com bot de mídia da Poe
+//   rotina             → rotina diária da Astra: garimpa, investiga e deixa leads + follow-ups em rascunho
+//   importar_cnpj      → recebe CNPJs recém-abertos (dados abertos da Receita) e salva como leads
+//   criar_conteudo     → legenda/roteiro + imagem/vídeo com bot de mídia da Poe
 //   gerar_midia        → (re)gera a imagem/vídeo de um conteúdo
 //   publicar           → publica feed/story/reels no Instagram (Graph API)
 //
 // Segurança: exige login E ser membro da equipe (gestao_membro()).
 // Todas as leituras/escritas usam o token de quem chamou, então as
 // mesmas regras de RLS da sala valem aqui dentro.
+// Exceção: "rotina" e "importar_cnpj" também aceitam uma chave interna
+// (header x-astra-chave) guardada só no Vault do banco, cada uma com a
+// sua chave e nenhuma outra ação. Nada é enviado a lead: tudo vira rascunho.
 // ============================================================
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
@@ -27,8 +32,13 @@ const CORS = {
 const env = (k: string) => Deno.env.get(k) || "";
 const GEMINI_MODEL = () => env("GEMINI_MODEL") || "gemini-2.5-flash";
 const POE_MODEL = () => env("POE_MODEL") || "Claude-Sonnet-4.6";
+// Claude: Sonnet escreve (mensagens, respostas, conteúdo); Haiku analisa (dossiê), mais rápido e barato
+const CLAUDE_ESCRITA = () => env("CLAUDE_MODEL") || "claude-sonnet-5-5";
+const CLAUDE_ANALISE = () => env("CLAUDE_MODEL_ANALISE") || "claude-haiku-4-5";
 const GRAPH = () => `https://graph.facebook.com/${env("IG_GRAPH_VERSION") || "v25.0"}`;
 const SITE = "https://astrovia-solutions.vercel.app";
+// tabela real de preços (vale quando as preferências não trazem outra)
+const PRECOS_REAIS = "Sistema próprio (agendamento/gestão, com a logo e as cores do cliente): R$ 500 pagamento único. 7 dias de teste grátis, sem compromisso. Manutenção opcional: R$ 80/mês (não é obrigatória).";
 
 class Falha extends Error {
   constructor(msg: string, public status = 400) { super(msg); }
@@ -37,11 +47,46 @@ class Falha extends Error {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
+/* compara sem vazar pelo tempo de resposta */
+function iguais(a: string, b: string) {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+// cada chave interna libera uma única ação
+const CHAVES_INTERNAS: Record<string, string> = { rotina: "astra_chave_rotina", importar_cnpj: "astra_chave_cnpj" };
+
+const clienteAdmin = () => createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+
+/* chave interna válida para esta ação? devolve o cliente service role */
+async function acessoInterno(chave: string, acao: string) {
+  const nome = CHAVES_INTERNAS[acao];
+  if (!nome || chave.length < 32) return null;
+  const admin = clienteAdmin();
+  const { data } = await admin.rpc("astra_segredo", { nome });
+  return typeof data === "string" && data.length >= 32 && iguais(chave, data) ? admin : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ erro: "Use POST" }, 405);
 
   try {
+    const tamanho = Number(req.headers.get("content-length") || 0);
+    if (tamanho > 3_000_000) throw new Falha("Pedido grande demais.", 413);
+    const body = await req.json().catch(() => ({}));
+
+    // rotina (pg_cron) e importador de CNPJs (GitHub Actions): chave interna, só a ação dela
+    const chave = req.headers.get("x-astra-chave") || "";
+    if (chave) {
+      const admin = await acessoInterno(chave, String(body.acao || ""));
+      if (!admin) throw new Falha("Chave interna inválida.", 401);
+      if (body.acao === "rotina") return rotinaEmSegundoPlano(admin);
+      return json(await importarCnpj(admin, body));
+    }
+
     const auth = req.headers.get("Authorization") || "";
     if (!/^Bearer\s+\S+/.test(auth)) throw new Falha("Faça login na Sala de Gestão.", 401);
     const apikey = env("SUPABASE_ANON_KEY") || req.headers.get("apikey") || "";
@@ -52,10 +97,11 @@ Deno.serve(async (req) => {
     const { data: membro, error: eMembro } = await sb.rpc("gestao_membro");
     if (eMembro || membro !== true) throw new Falha("Acesso restrito à equipe da Astrovia.", 403);
 
-    const body = await req.json().catch(() => ({}));
     switch (body.acao) {
       case "status":
         return json({
+          claude: !!env("ANTHROPIC_API_KEY"),
+          claude_modelo: CLAUDE_ESCRITA(),
           gemini: !!env("GEMINI_API_KEY"),
           poe: !!env("POE_API_KEY"),
           poe_modelo: POE_MODEL(),
@@ -73,6 +119,9 @@ Deno.serve(async (req) => {
         return json(await responder(sb, body));
       case "gerar_abordagem":
         return json(await gerarAbordagem(sb, body));
+      case "rotina":
+        // "rodar agora" pela sala (membro já conferido acima): mesma rotina do cron
+        return rotinaEmSegundoPlano(clienteAdmin(), true);
       case "criar_conteudo":
         return json(await criarConteudo(sb, body));
       case "gerar_midia":
@@ -94,7 +143,7 @@ Deno.serve(async (req) => {
    NOTA DO LEAD (0–100) — regras simples e explicáveis, sem IA
    ============================================================ */
 type Lead = {
-  fonte: "google" | "instagram" | "manual";
+  fonte: "google" | "instagram" | "manual" | "receita";
   externo_id: string;
   nome: string;
   nicho?: string | null;
@@ -109,6 +158,12 @@ type Lead = {
   seguidores?: number | null;
   publicacoes?: number | null;
   bio?: string | null;
+  cnpj?: string | null;
+  aberto_em?: string | null;
+  email?: string | null;
+  dono?: string | null;
+  quente?: boolean;
+  quente_motivo?: string | null;
   score?: number;
   motivos?: string[];
   raw?: unknown;
@@ -154,7 +209,15 @@ function pontuar(l: Lead, icp: Icp = {}): Lead {
   if (preco && icp.precos?.includes(preco)) { s += 6; m.push(`Faixa de preço ${PRECO[preco]}`); }
   const site = (l.site || "").trim();
 
-  if (!site) { s += 30; m.push("Não tem site"); }
+  if (l.fonte === "receita") {
+    // CNPJ recém-aberto: ainda montando a estrutura, a hora certa de ter sistema próprio
+    const dias = l.aberto_em ? Math.round((Date.now() - Date.parse(l.aberto_em)) / 864e5) : null;
+    if (dias !== null && dias <= 45) { s += 30; m.push(`Abriu há ${dias} dias`); }
+    else if (dias !== null) { s += 22; m.push(`Aberto há ${dias} dias`); }
+    if (l.telefone) { s += 10; m.push("Telefone do cadastro na Receita (confira se não é do contador)"); }
+    if (l.dono) { s += 5; m.push(`Dono: ${l.dono}`); }
+  }
+  else if (!site) { s += 30; m.push("Não tem site"); }
   else if (SITE_FRACO.test(site)) { s += 22; m.push("Sem site próprio (usa link de rede social/WhatsApp)"); }
   if (site && AGENDA_ONLINE.test(site)) { s -= 15; m.push("Já usa plataforma de agendamento"); }
 
@@ -381,7 +444,7 @@ function demoPara(nicho: string) {
   return { nome: "portfólio da Astrovia", url: SITE };
 }
 
-async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string }) {
+async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string }) {
   if (!b.prospect_id) throw new Falha("Informe o lead.");
   const canal = ["instagram", "whatsapp", "email"].includes(b.canal || "") ? b.canal! : "instagram";
   const tipo = b.tipo === "followup" ? "followup" : "primeiro_contato";
@@ -418,6 +481,7 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
     nome: p.nome, nicho: p.nicho, cidade: p.cidade, instagram: p.instagram, site: p.site,
     nota_google: p.nota_google, avaliacoes_google: p.avaliacoes, seguidores: p.seguidores,
     bio_instagram: p.bio, pontos_observados: p.motivos,
+    ...(p.fonte === "receita" && p.aberto_em ? { negocio_recem_aberto: `abriu em ${String(p.aberto_em).split("-").reverse().join("/")}`, dono_provavel: p.dono || null } : {}),
     ...(p.investigado_em ? {
       dono_provavel: p.dono && dz.dono_confianca !== "baixa" ? p.dono : null,
       dores_reais: dz.dores, gancho_sugerido: dz.gancho, diagnostico_site: dz.site_resumo,
@@ -450,8 +514,10 @@ REGRAS
 - Termine com ${prefs.cta?.trim() ? `este tipo de chamada: ${prefs.cta.trim()}` : 'uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?")'}.
 ${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
 - ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar a demo." : "Pode incluir o link da demo."}
+- Se houver negocio_recem_aberto, parabenize pela abertura com naturalidade (sem dizer de onde veio a informação; nunca cite CNPJ, Receita ou cadastro).
 - ${tipo === "followup" ? "Follow-up curto (até 250 caracteres), leve, sem cobrar resposta." : `Até ${limite} caracteres.`}
-- Não prometa resultados em números, não fale de preço, não use "Prezado".
+- Preço: só cite se as regras acima pedirem, e somente estes valores reais: ${PRECOS_REAIS}
+- Nunca prometa economia (em reais ou em porcentagem) nem resultados em números. Nunca diga que o WhatsApp vai passar a cobrar ou que algo vai ficar pago. Não use "Prezado".
 ${canal === "email" ? "- Inclua um assunto curto." : ""}
 
 ${exemplos.length ? `\nEXEMPLOS DE MENSAGENS NO ESTILO CERTO (copie o jeito, não o texto; adapte ao lead)\n${exemplos.map((e, i) => `${i + 1}) """${e.slice(0, 700)}"""`).join("\n")}\n` : ""}
@@ -475,7 +541,7 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
 
   const monta = (t: string) => (out.assunto && canal === "email" ? `Assunto: ${out.assunto}\n\n${t}` : t);
   const linhas = [out.mensagem, out.alternativa].filter(Boolean).map((t) => ({
-    prospect_id: p.id, canal, tipo, texto: monta(t!.trim()), status: "rascunho", modelo,
+    prospect_id: p.id, canal, tipo, texto: monta(t!.trim()), status: "rascunho", modelo, origem: b.origem === "rotina" ? "rotina" : "manual",
   }));
   const { data: salvas, error: e2 } = await sb.from("gestao_abordagens").insert(linhas).select();
   if (e2) throw e2;
@@ -535,6 +601,27 @@ const SCHEMA_DOSSIE = {
   required: ["dono_confianca", "dores", "momento_quente", "gancho", "resumo"],
 };
 
+/* acha no Google Maps um negócio que veio sem place_id (ex.: CNPJ novo da Receita) */
+async function acharNoMaps(key: string, p: { nome: string; endereco?: string | null; cidade?: string | null }) {
+  const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json", "X-Goog-Api-Key": key,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.websiteUri,places.rating,places.userRatingCount,places.googleMapsUri,places.nationalPhoneNumber,places.formattedAddress",
+    },
+    body: JSON.stringify({ textQuery: `${p.nome} ${p.endereco || p.cidade || "Curitiba"}`, languageCode: "pt-BR", regionCode: "BR", pageSize: 3 }),
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!r.ok) return null;
+  const d = await r.json();
+  // só aceita se o nome bater (evita confundir com o vizinho)
+  const palavras = semAcento(p.nome).split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+  return (d.places || []).find((x: { displayName?: { text?: string } }) => {
+    const n = semAcento(x.displayName?.text || "");
+    return palavras.length > 0 && palavras.filter((w) => n.includes(w)).length >= Math.min(2, palavras.length);
+  }) || null;
+}
+
 async function investigar(sb: SupabaseClient, b: { prospect_id?: string }) {
   const { data: p, error } = await sb.from("gestao_prospects").select("*").eq("id", b.prospect_id || "").single();
   if (error || !p) throw new Falha("Lead não encontrado.", 404);
@@ -542,10 +629,26 @@ async function investigar(sb: SupabaseClient, b: { prospect_id?: string }) {
   const icp: Icp = (cfg?.prefs as { icp?: Icp } | null)?.icp || {};
 
   const key = env("GOOGLE_PLACES_KEY");
+  // lead da Receita: procura o negócio no Google Maps para ter avaliações, site e nota
+  let placeId: string | null = p.fonte === "google" ? p.externo_id : p.raw?.place_id || null;
+  const extra: Record<string, unknown> = {};
+  if (!placeId && key && p.fonte === "receita") {
+    const achado = await acharNoMaps(key, p).catch(() => null);
+    if (achado) {
+      placeId = achado.id;
+      Object.assign(extra, {
+        site: p.site || achado.websiteUri || null, maps_url: achado.googleMapsUri || null,
+        nota_google: achado.rating ?? null, avaliacoes: achado.userRatingCount ?? null,
+        telefone: p.telefone || achado.nationalPhoneNumber || null,
+        raw: { ...(p.raw || {}), place_id: achado.id },
+      });
+      Object.assign(p, extra);
+    }
+  }
   const siteProprio = p.site && !SITE_FRACO.test(p.site) ? p.site : null;
   const [lugar, site] = await Promise.all([
-    p.fonte === "google" && key && p.externo_id
-      ? fetch(`https://places.googleapis.com/v1/places/${p.externo_id}?languageCode=pt-BR`, {
+    key && placeId
+      ? fetch(`https://places.googleapis.com/v1/places/${placeId}?languageCode=pt-BR`, {
           headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "reviews,priceLevel,regularOpeningHours.weekdayDescriptions,editorialSummary" },
         }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
       : Promise.resolve(null),
@@ -581,7 +684,7 @@ DEVOLVA
 - resumo: 2 frases para o vendedor.
 Responda em JSON.`;
 
-  const { dados: ia_, modelo } = await ia(prompt, "auto", SCHEMA_DOSSIE, 0.3);
+  const { dados: ia_, modelo } = await ia(prompt, "auto", SCHEMA_DOSSIE, 0.3, true);
   const dores = Array.isArray(ia_.dores) ? ia_.dores.slice(0, 3) : [];
   const temDono = ia_.dono && ia_.dono_confianca && ia_.dono_confianca !== "nenhuma";
 
@@ -601,9 +704,10 @@ Responda em JSON.`;
   };
   const { data: novo, error: e2 } = await sb.from("gestao_prospects").update({
     dono: temDono ? String(ia_.dono).trim() : null,
-    quente: !!ia_.momento_quente, quente_motivo: ia_.motivo_quente || null,
+    quente: !!ia_.momento_quente || (p.fonte === "receita" && !!p.quente),
+    quente_motivo: ia_.motivo_quente || (p.fonte === "receita" ? p.quente_motivo : null) || null,
     dossie, investigado_em: new Date().toISOString(),
-    score: Math.max(0, Math.min(100, score)), motivos,
+    score: Math.max(0, Math.min(100, score)), motivos, ...extra,
   }).eq("id", p.id).select().single();
   if (e2) throw e2;
   return { prospect: novo };
@@ -657,7 +761,8 @@ async function responder(sb: SupabaseClient, b: { prospect_id?: string; texto?: 
 ASTROVIA
 Oferta: ${cfg?.oferta || "sistemas, sites e automações com IA"}
 Tom: ${cfg?.tom || "próximo, direto"} · Assinatura: ${cfg?.assinatura || "Christian · Astrovia Solutions"}
-Tabela de preços e condições (use SOMENTE isto para valores): ${prefs.precos?.trim() || "não informada — nunca invente valores; escreva 'a definir na conversa'"}
+Tabela de preços e condições (use SOMENTE isto para valores): ${prefs.precos?.trim() || PRECOS_REAIS}
+Nunca prometa economia nem resultados em números; nunca diga que o WhatsApp vai cobrar.
 Demo com o nome do lead: ${/\/demos\//.test(demo.url) ? `${demo.url}?nome=${encodeURIComponent(p.nome)}` : demo.url}
 
 LEAD
@@ -687,8 +792,8 @@ Responda em JSON.`;
 }
 
 /* ============================================================
-   IA DE TEXTO — sempre Gemini grátis primeiro. A Poe só entra
-   como reserva (limite/erro do Gemini). motor: "auto" | "gemini"
+   IA DE TEXTO — Claude primeiro (Sonnet escreve, Haiku analisa);
+   Gemini grátis e Poe como reserva. motor: "auto" | "gemini"
    ============================================================ */
 // deno-lint-ignore no-explicit-any
 type Saida = Record<string, any>;
@@ -752,11 +857,59 @@ async function poe(prompt: string): Promise<Saida> {
   return lerJson(d?.choices?.[0]?.message?.content || "");
 }
 
-async function ia(prompt: string, motor = "auto", schema: unknown = SCHEMA_ABORDAGEM, temperature = 0.7): Promise<{ dados: Saida; modelo: string }> {
-  const temGemini = !!env("GEMINI_API_KEY"), temPoe = !!env("POE_API_KEY");
+/* esquema do Gemini (OBJECT, STRING...) → JSON Schema das saídas estruturadas do Claude */
+function paraJsonSchema(sc: Saida): Saida {
+  const t = String(sc.type || "").toLowerCase();
+  const out: Saida = { type: t };
+  if (sc.enum) out.enum = sc.enum;
+  if (sc.description) out.description = sc.description;
+  if (t === "object") {
+    out.properties = Object.fromEntries(Object.entries(sc.properties || {}).map(([k, v]) => [k, paraJsonSchema(v as Saida)]));
+    out.required = sc.required || [];
+    out.additionalProperties = false;
+  }
+  if (t === "array") out.items = paraJsonSchema(sc.items || { type: "STRING" });
+  return out;
+}
+
+async function claude(prompt: string, schema: unknown, temperature: number, modelo: string): Promise<Saida> {
+  // Sonnet/Opus 5.x: sem temperature (a API recusa) e raciocínio leve; Haiku 4.5: temperature normal
+  const nova = /claude-(sonnet|opus|fable)-5/.test(modelo);
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": env("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: modelo,
+      max_tokens: 8000,
+      ...(nova ? { output_config: { effort: "medium", format: { type: "json_schema", schema: paraJsonSchema(schema as Saida) } } }
+        : { temperature, output_config: { format: { type: "json_schema", schema: paraJsonSchema(schema as Saida) } } }),
+      messages: [{ role: "user", content: prompt }],
+    }),
+    signal: AbortSignal.timeout(80000),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Claude ${r.status}: ${d?.error?.message || r.statusText}`);
+  if (d.stop_reason === "refusal") throw new Error("Claude recusou o pedido");
+  const texto = (d.content || []).filter((x: { type: string }) => x.type === "text").map((x: { text: string }) => x.text).join("");
+  const out = lerJson(texto);
+  if (!out || typeof out !== "object") throw new Error("Claude não devolveu JSON");
+  return out;
+}
+
+// Ordem: Claude (se houver ANTHROPIC_API_KEY) → Gemini grátis → Poe. motor "gemini" pula o Claude.
+async function ia(prompt: string, motor = "auto", schema: unknown = SCHEMA_ABORDAGEM, temperature = 0.7, analise = false): Promise<{ dados: Saida; modelo: string }> {
+  const temClaude = !!env("ANTHROPIC_API_KEY"), temGemini = !!env("GEMINI_API_KEY"), temPoe = !!env("POE_API_KEY");
+  if (temClaude && motor !== "gemini") {
+    const modelo = analise ? CLAUDE_ANALISE() : CLAUDE_ESCRITA();
+    try {
+      return { dados: await claude(prompt, schema, temperature, modelo), modelo };
+    } catch (e) {
+      console.error("Claude indisponível, usando Gemini:", String((e as Error).message).slice(0, 200));
+    }
+  }
   if (!temGemini) {
     if (motor === "auto" && temPoe) return { dados: await poe(prompt), modelo: `poe:${POE_MODEL()}` };
-    throw new Falha("Configure o secret GEMINI_API_KEY para gerar mensagens.");
+    throw new Falha("Configure o secret ANTHROPIC_API_KEY (ou GEMINI_API_KEY) para gerar mensagens.");
   }
   try {
     return { dados: await gemini(prompt, schema, temperature), modelo: GEMINI_MODEL() };
@@ -961,4 +1114,195 @@ async function publicarBg(sb: SupabaseClient, row: any, url: string) {
     console.error("publicar", e);
     await sb.from("gestao_conteudos").update({ status: "erro", erro: `Publicação: ${(e as Error).message || e}` }).eq("id", row.id);
   }
+}
+
+/* ============================================================
+   ROTINA DIÁRIA DA ASTRA — o pg_cron chama a cada 5 min de manhã.
+   Cada rodada faz um pedaço (garimpar, investigar, escrever) até a
+   meta do dia; as mensagens ficam em RASCUNHO em "Aprovar envios".
+   Nada é enviado a ninguém daqui.
+   Preferências (gestao_agente_config.prefs.rotina): ativa, meta,
+   nota_min, followups, max_followups, garimpos_dia, nichos
+   ============================================================ */
+type PrefsRotina = { ativa: boolean; meta: number; nota_min: number; followups: boolean; max_followups: number; garimpos_dia: number; nichos?: string[] };
+const hojeBR = () => new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+const horaBR = () => Number(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", minute: "numeric", hour12: false }).replace(":", "."));
+const LIMITE_RODADA_S = 85; // a função tem ~150 s: não começa nada novo depois disso
+
+function rotinaEmSegundoPlano(sb: SupabaseClient, manual = false) {
+  emSegundoPlano(rotina(sb, manual).catch((e) => console.error("rotina", e)));
+  return json({ ok: true, mensagem: "Rotina iniciada. Os rascunhos aparecem em Aprovar envios." }, 202);
+}
+
+async function avisarDono(sb: SupabaseClient, texto: string) {
+  const { data: t } = await sb.from("astra_tenants").select("id").eq("slug", "astrovia").maybeSingle();
+  if (!t) return;
+  let { data: c } = await sb.from("astra_contatos").select("id").eq("tenant_id", t.id).eq("canal", "interno").eq("externo_id", "dono").maybeSingle();
+  if (!c) c = (await sb.from("astra_contatos").insert({ tenant_id: t.id, canal: "interno", externo_id: "dono", nome: "Dono", status: "cliente" }).select("id").single()).data;
+  if (c) await sb.from("astra_mensagens").insert({ tenant_id: t.id, contato_id: c.id, papel: "agente", conteudo: texto.slice(0, 3000) });
+}
+
+async function rotina(sb: SupabaseClient, manual: boolean) {
+  const t0 = Date.now();
+  const passou = () => (Date.now() - t0) / 1000;
+  const dia = hojeBR();
+  const desde = new Date(`${dia}T00:00:00-03:00`).toISOString();
+
+  const { data: cfg } = await sb.from("gestao_agente_config").select("*").eq("id", "padrao").maybeSingle();
+  const pr = ((cfg?.prefs || {}) as { rotina?: Partial<PrefsRotina> }).rotina || {};
+  const r: PrefsRotina = {
+    ativa: pr.ativa !== false,
+    meta: Math.min(30, Math.max(1, Number(pr.meta) || 10)),
+    nota_min: Math.min(90, Math.max(0, Number(pr.nota_min ?? 40))),
+    followups: pr.followups !== false,
+    max_followups: Math.min(3, Math.max(0, Number(pr.max_followups ?? 2))),
+    garimpos_dia: Math.min(8, Math.max(0, Number(pr.garimpos_dia ?? 4))),
+    nichos: Array.isArray(pr.nichos) && pr.nichos.length ? pr.nichos : undefined,
+  };
+  if (!r.ativa && !manual) return;
+
+  // trava: uma rodada por vez (a próxima do cron sai na hora se esta ainda estiver rodando)
+  await sb.from("astra_rotinas").upsert({ dia }, { onConflict: "dia", ignoreDuplicates: true });
+  const agora = new Date().toISOString();
+  const { data: reg } = await sb.from("astra_rotinas").update({ ocupada_ate: new Date(Date.now() + 170e3).toISOString(), atualizado_em: agora })
+    .eq("dia", dia).or(`ocupada_ate.is.null,ocupada_ate.lt."${agora}"`).select().maybeSingle();
+  if (!reg) return;
+
+  const log: string[] = Array.isArray(reg.detalhes?.log) ? reg.detalhes.log : [];
+  const anotar = (m: string) => { log.push(`${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" }).slice(0, 5)} ${m}`); console.log("rotina:", m); };
+  let garimpos = reg.garimpos || 0, erro: string | null = null;
+
+  const contar = async (tipo: string) => {
+    const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", tipo).gte("criado_em", desde);
+    return new Set((data || []).map((x) => x.prospect_id)).size;
+  };
+
+  try {
+    // 1) follow-ups: abordados há X dias sem resposta, até max_followups por lead
+    if (r.followups && r.max_followups > 0) {
+      const limite = new Date(Date.now() - (cfg?.followup_dias || 3) * 864e5).toISOString();
+      const { data: parados } = await sb.from("gestao_prospects").select("id, nome, abordado_em").eq("status", "abordado").lt("abordado_em", limite).order("abordado_em").limit(30);
+      for (const p of parados || []) {
+        if (passou() > LIMITE_RODADA_S - 25) break;
+        const { data: hist } = await sb.from("gestao_abordagens").select("tipo, status, canal, criado_em").eq("prospect_id", p.id).order("criado_em", { ascending: false }).limit(20);
+        const h = hist || [];
+        if (h.some((x) => x.tipo === "recebida")) continue; // respondeu: é com o Christian
+        if (h.some((x) => x.tipo === "followup" && x.criado_em > p.abordado_em)) continue; // já tem (rascunho, enviado ou descartado)
+        if (h.filter((x) => x.tipo === "followup" && x.status === "enviada").length >= r.max_followups) continue;
+        const ultima = h.find((x) => x.status === "enviada" && (x.tipo === "primeiro_contato" || x.tipo === "followup"));
+        try {
+          await gerarAbordagem(sb, { prospect_id: p.id, canal: ultima?.canal || "whatsapp", tipo: "followup", origem: "rotina" });
+          anotar(`follow-up pronto: ${p.nome}`);
+        } catch (e) { anotar(`follow-up falhou (${p.nome}): ${String((e as Error).message).slice(0, 120)}`); }
+      }
+    }
+
+    // 2) leads novos até a meta do dia
+    let feitos = await contar("primeiro_contato");
+    const tentados = new Set<string>();
+    const nichos = r.nichos || (cfg?.nichos?.length ? cfg.nichos : ["barbearia", "clínica de estética", "salão de beleza", "oficina mecânica"]);
+    const doAno = Math.floor((Date.now() - Date.parse(`${dia.slice(0, 4)}-01-01`)) / 864e5);
+    while (feitos < r.meta && passou() < LIMITE_RODADA_S) {
+      const { data: cands } = await sb.from("gestao_prospects").select("id, nome, nicho, telefone, instagram, investigado_em, score")
+        .eq("status", "novo").gte("score", r.nota_min).or("telefone.not.is.null,instagram.not.is.null")
+        .order("quente", { ascending: false }).order("score", { ascending: false }).limit(60);
+      const ids = (cands || []).map((c) => c.id);
+      const { data: usados } = ids.length ? await sb.from("gestao_abordagens").select("prospect_id").in("prospect_id", ids) : { data: [] as { prospect_id: string }[] };
+      const ja = new Set((usados || []).map((u) => u.prospect_id));
+      const c = (cands || []).find((x) => !ja.has(x.id) && !tentados.has(x.id));
+
+      if (!c) {
+        // acabaram os bons: garimpa o próximo nicho da fila (muda a cada dia)
+        if (garimpos >= r.garimpos_dia || passou() > 60) break;
+        const busca = nichos[(doAno + garimpos) % nichos.length];
+        garimpos++;
+        await sb.from("astra_rotinas").update({ garimpos }).eq("dia", dia);
+        try {
+          const g = await garimparGoogle(sb, { busca, cidade: cfg?.cidade_padrao || "Curitiba, PR", paginas: 2 });
+          anotar(`garimpo "${busca}": ${g.encontrados} achados, ${g.novos.length} novos no perfil`);
+        } catch (e) { anotar(`garimpo "${busca}" falhou: ${String((e as Error).message).slice(0, 120)}`); }
+        continue;
+      }
+      tentados.add(c.id);
+
+      if (!c.investigado_em) {
+        if (passou() > 50) break; // investigação pode levar ~1 min: fica para a próxima rodada
+        try {
+          const inv = await investigar(sb, { prospect_id: c.id });
+          if ((inv.prospect?.score ?? 0) < r.nota_min) { anotar(`${c.nome}: fora do perfil depois do dossiê`); continue; }
+        } catch (e) { anotar(`investigar ${c.nome} falhou: ${String((e as Error).message).slice(0, 120)}`); continue; }
+        if (passou() > LIMITE_RODADA_S) break;
+      }
+      try {
+        await gerarAbordagem(sb, { prospect_id: c.id, canal: c.telefone ? "whatsapp" : "instagram", tipo: "primeiro_contato", origem: "rotina" });
+        feitos++;
+        anotar(`mensagem pronta: ${c.nome} (${c.nicho || "sem nicho"})`);
+      } catch (e) { anotar(`mensagem para ${c.nome} falhou: ${String((e as Error).message).slice(0, 120)}`); }
+    }
+  } catch (e) {
+    erro = String((e as Error).message || e).slice(0, 300);
+    anotar(`erro: ${erro}`);
+  }
+
+  // fecha a rodada
+  const [leads, followups] = await Promise.all([contar("primeiro_contato"), contar("followup")]);
+  const concluida = leads >= r.meta;
+  const fimDaJanela = horaBR() >= 8.5;
+  const status = concluida ? "concluida" : erro ? "erro" : fimDaJanela || manual ? "parcial" : "rodando";
+  let avisado = !!reg.avisado;
+  if (!avisado && (concluida || fimDaJanela || manual)) {
+    const { data: hoje } = await sb.from("gestao_abordagens").select("gestao_prospects(nome, nicho)").eq("origem", "rotina").eq("tipo", "primeiro_contato")
+      .eq("status", "rascunho").gte("criado_em", desde).order("criado_em", { ascending: false }).limit(20);
+    const nomes = [...new Set((hoje || []).map((x: any) => x.gestao_prospects?.nome).filter(Boolean))].slice(0, 3);
+    await avisarDono(sb, leads || followups
+      ? `Bom dia! A rotina de hoje deixou ${leads} ${leads === 1 ? "lead novo" : "leads novos"} com mensagem${followups ? ` e ${followups} follow-up${followups > 1 ? "s" : ""}` : ""} em Aprovar envios.${nomes.length ? ` Entre eles: ${nomes.join(", ")}.` : ""} Nada foi enviado: é só revisar e aprovar.${concluida ? "" : ` Fiquei abaixo da meta de ${r.meta}: ${erro ? "deu um erro no caminho" : "faltaram leads bons no perfil"}.`}`
+      : `Bom dia! Rodei a prospecção de hoje, mas não encontrei leads bons o suficiente para a meta de ${r.meta}.${erro ? " Deu um erro no caminho; vale olhar o painel de resultados." : " Posso testar outro nicho ou bairro se você quiser."}`);
+    avisado = true;
+  }
+  await sb.from("astra_rotinas").update({
+    status, leads_preparados: leads, followups, garimpos, rodadas: (reg.rodadas || 0) + 1, ocupada_ate: null, avisado, erro,
+    detalhes: { log: log.slice(-40), meta: r.meta }, atualizado_em: new Date().toISOString(),
+  }).eq("dia", dia);
+}
+
+/* ============================================================
+   CNPJs RECÉM-ABERTOS — o GitHub Actions lê os dados abertos da
+   Receita Federal todo mês, filtra Curitiba + atividades-alvo e
+   manda para cá. Aqui valida, limpa (nada de CPF) e salva.
+   ============================================================ */
+const so = (s: unknown) => String(s ?? "").replace(/\D/g, "");
+const texto = (s: unknown, max = 120) => String(s ?? "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\d{11}/g, "").replace(/\s+/g, " ").trim().slice(0, max);
+const titulo = (s: string) => s.toLowerCase().replace(/(^|\s)(\p{L})/gu, (_, a, b) => a + b.toUpperCase()).replace(/\b(De|Da|Do|Das|Dos|E|Em)\b/g, (w) => w.toLowerCase());
+const NICHOS_RECEITA = ["barbearia", "salão de beleza", "clínica de estética", "clínica odontológica", "clínica médica", "fisioterapia", "oficina mecânica", "oficina de motos"];
+
+async function importarCnpj(sb: SupabaseClient, b: { leads?: unknown[] }) {
+  const lista = Array.isArray(b.leads) ? b.leads.slice(0, 300) : [];
+  const leads: Lead[] = [];
+  for (const x of lista as Record<string, unknown>[]) {
+    const cnpj = so(x.cnpj);
+    const nome = texto(x.nome);
+    const aberto = /^\d{4}-\d{2}-\d{2}$/.test(String(x.aberto_em)) ? String(x.aberto_em) : null;
+    if (cnpj.length !== 14 || nome.length < 2 || !aberto) continue;
+    const dias = (Date.now() - Date.parse(aberto)) / 864e5;
+    if (!(dias >= 0 && dias <= 150)) continue;
+    const tel = so(x.telefone);
+    const telefone = tel.length === 10 || tel.length === 11 ? `(${tel.slice(0, 2)}) ${tel.slice(2, -4)}-${tel.slice(-4)}` : null;
+    const email = /^[^\s@<>()]{1,64}@[^\s@<>()]{1,190}\.[a-z]{2,}$/i.test(String(x.email ?? "")) ? String(x.email).toLowerCase() : null;
+    const dono = /^\p{L}{2,20}$/u.test(String(x.dono ?? "")) ? titulo(String(x.dono)) : null;
+    const nicho = NICHOS_RECEITA.includes(String(x.nicho)) ? String(x.nicho) : null;
+    const data = aberto.split("-").reverse().join("/");
+    leads.push(pontuar({
+      fonte: "receita", externo_id: cnpj, cnpj, nome: titulo(nome), nicho, cidade: "Curitiba, PR",
+      endereco: texto(x.endereco, 200) || null, telefone, email, dono, aberto_em: aberto,
+      quente: true, quente_motivo: `Negócio aberto em ${data}`,
+      raw: { cnae: so(x.cnae).slice(0, 7) || null, bairro: texto(x.bairro, 60) || null, mei: x.mei === true },
+    }));
+  }
+  // o mesmo negócio pode já ter vindo do Google: não duplica pelo telefone
+  const tels = [...new Set(leads.map((l) => l.telefone).filter(Boolean))] as string[];
+  const { data: ja } = tels.length ? await sb.from("gestao_prospects").select("telefone").in("telefone", tels) : { data: [] as { telefone: string }[] };
+  const usados = new Set((ja || []).map((x) => x.telefone));
+  const unicos = leads.filter((l) => !l.telefone || !usados.has(l.telefone));
+  const r = await salvarNovos(sb, unicos);
+  return { recebidos: lista.length, validos: leads.length, ja_existiam: leads.length - unicos.length + r.repetidos, novos: r.novos.length };
 }

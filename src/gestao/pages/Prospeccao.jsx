@@ -288,10 +288,10 @@ function LeadLinha({ p, dias, onOpen }) {
           {followupVencido(p, dias) && <Badge color="#fbbf24"><Clock size={10} /> follow-up</Badge>}
           {p.quente && <Badge color="#ff6b3d"><Flame size={10} /> quente</Badge>}
           {p.dono && <span className="text-xs text-titanium">· {p.dono}</span>}
-          {!p.investigado_em && p.fonte === "google" && <span className="text-[0.65rem] text-titanium-dim">não investigado</span>}
+          {!p.investigado_em && (p.fonte === "google" || p.fonte === "receita") && <span className="text-[0.65rem] text-titanium-dim">não investigado</span>}
         </div>
         <p className="mt-0.5 truncate text-xs text-titanium">
-          {[FONTES[p.fonte], p.nicho, p.cidade, p.instagram && "@" + p.instagram, p.nota_google && `${p.nota_google}★ (${p.avaliacoes})`, p.seguidores && `${p.seguidores.toLocaleString("pt-BR")} seguidores`].filter(Boolean).join(" · ")}
+          {[FONTES[p.fonte], p.aberto_em && `aberto em ${fmtDate(p.aberto_em)}`, p.nicho, p.cidade, p.instagram && "@" + p.instagram, p.nota_google && `${p.nota_google}★ (${p.avaliacoes})`, p.seguidores && `${p.seguidores.toLocaleString("pt-BR")} seguidores`].filter(Boolean).join(" · ")}
         </p>
         {p.motivos?.length > 0 && <p className="mt-1 hidden truncate text-[0.7rem] text-titanium-dim sm:block">{p.motivos.slice(0, 3).join(" · ")}</p>}
       </div>
@@ -540,7 +540,7 @@ function LeadModal({ id, onClose, chaves }) {
     setBusy("funil");
     setErro("");
     try {
-      const origem = p.fonte === "google" ? "Google" : p.fonte === "instagram" ? "Instagram" : "Prospecção ativa";
+      const origem = p.fonte === "google" ? "Google" : p.fonte === "instagram" ? "Instagram" : p.fonte === "receita" ? "CNPJ novo (Receita)" : "Prospecção ativa";
       const { data: c, error: e1 } = await sb.from("gestao_clientes").insert({
         nome: p.nome, empresa: p.nome, segmento: p.nicho, whatsapp: p.telefone, instagram: p.instagram,
         site: p.site, cidade: p.cidade, endereco: p.endereco, origem, status: "prospect", responsavel: p.responsavel || uid,
@@ -604,7 +604,7 @@ function LeadModal({ id, onClose, chaves }) {
             ))}
           </dl>
           <Observacao p={p} />
-          {(p.fonte === "google" || p.site) && <Dossie p={p} />}
+          {(p.fonte === "google" || p.fonte === "receita" || p.site) && <Dossie p={p} />}
           <DemoLink p={p} />
           {p.motivos?.length > 0 && (
             <div className="mt-4">

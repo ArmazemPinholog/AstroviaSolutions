@@ -1,7 +1,8 @@
 // Prospecção pela Astra: ela comanda o motor de garimpo da Sala (função gestao-agente)
 // com o login de quem está falando com ela, então valem as mesmas regras de acesso da sala.
 // Nada é enviado ao lead daqui: a Astra só garimpa, investiga e deixa a mensagem em rascunho.
-// O envio continua sendo aprovado pelo Christian na aba Prospecção.
+// O envio continua sendo aprovado pelo Christian em "Aprovar envios".
+// A rotina diária (gestao-agente, ação "rotina") faz o mesmo sozinha toda manhã, pelo pg_cron.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { limpar } from "./seguranca.ts";
 
@@ -51,6 +52,18 @@ export const ferramentasProspeccao = [
     },
   },
   {
+    name: "resultados_prospeccao",
+    description:
+      "Números da prospecção num período: leads novos (por fonte), abordados, respostas, reuniões, taxa de resposta e como foi a rotina automática de hoje. Use para 'como está a prospecção', relatórios e balanços.",
+    parameters: { type: "object", properties: { dias: { type: "integer", description: "Período em dias (padrão 7)" } } },
+  },
+  {
+    name: "rodar_rotina_agora",
+    description:
+      "Roda agora a rotina diária de prospecção (a mesma que roda sozinha toda manhã): garimpa, investiga e deixa leads e follow-ups em rascunho em Aprovar envios, até a meta do dia. Só use quando ele pedir.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
     name: "abordagens_pendentes",
     description: "Mensagens em rascunho esperando aprovação do Christian, e leads abordados há mais de 3 dias sem resposta (precisam de follow-up).",
     parameters: { type: "object", properties: {} },
@@ -82,6 +95,7 @@ const resumoLead = (p: any) => ({
   tem_whatsapp: !!p.telefone,
   instagram: p.instagram,
   quente: p.quente || undefined,
+  fonte: p.fonte === "receita" ? `CNPJ novo${p.aberto_em ? `, aberto em ${String(p.aberto_em).split("-").reverse().join("/")}` : ""}` : undefined,
 });
 
 export async function executarProspeccao(db: SupabaseClient, nome: string, a: any, auth?: string) {
@@ -102,7 +116,7 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
     }
     case "leads_para_abordar": {
       const limite = Math.min(20, Math.max(1, Number(a.limite) || 8));
-      let q = db.from("gestao_prospects").select("id, nome, nicho, cidade, score, motivos, nota_google, avaliacoes, telefone, instagram, quente, investigado_em")
+      let q = db.from("gestao_prospects").select("id, nome, nicho, cidade, score, motivos, nota_google, avaliacoes, telefone, instagram, quente, investigado_em, fonte, aberto_em")
         .eq("status", "novo").order("quente", { ascending: false }).order("score", { ascending: false }).limit(limite);
       if (a.nicho) q = q.ilike("nicho", `%${limpar(a.nicho, 60)}%`);
       const { data } = await q;
@@ -135,6 +149,40 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
       });
       if (d.erro) return d;
       return { status: "rascunho, aguardando aprovação na aba Prospecção", mensagens: (d.abordagens ?? []).map((x: any) => x.texto).slice(0, 2) };
+    }
+    case "resultados_prospeccao": {
+      const dias = Math.min(Math.max(Number(a.dias) || 7, 1), 90);
+      const desde = new Date(Date.now() - dias * 86400e3).toISOString();
+      const hoje = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+      const [{ data: novos }, { data: envios }, { data: recebidas }, { count: reunioes }, { data: rot }, { count: rascunhos }] = await Promise.all([
+        db.from("gestao_prospects").select("fonte").gte("criado_em", desde).limit(2000),
+        db.from("gestao_abordagens").select("prospect_id, tipo").eq("status", "enviada").in("tipo", ["primeiro_contato", "followup"]).gte("enviada_em", desde).limit(2000),
+        db.from("gestao_abordagens").select("prospect_id").eq("tipo", "recebida").gte("criado_em", desde).limit(2000),
+        db.from("astra_reunioes").select("id", { count: "exact", head: true }).neq("status", "cancelada").gte("criado_em", desde),
+        db.from("astra_rotinas").select("status, leads_preparados, followups, garimpos").eq("dia", hoje).maybeSingle(),
+        db.from("gestao_abordagens").select("id", { count: "exact", head: true }).eq("status", "rascunho").in("tipo", ["primeiro_contato", "followup"]),
+      ]);
+      const porFonte: Record<string, number> = {};
+      for (const n of novos ?? []) porFonte[n.fonte] = (porFonte[n.fonte] ?? 0) + 1;
+      const abordados = new Set((envios ?? []).filter((e) => e.tipo === "primeiro_contato").map((e) => e.prospect_id)).size;
+      const responderam = new Set((recebidas ?? []).map((e) => e.prospect_id)).size;
+      return {
+        periodo_dias: dias,
+        leads_novos: novos?.length ?? 0,
+        leads_por_fonte: porFonte,
+        abordados,
+        followups_enviados: (envios ?? []).filter((e) => e.tipo === "followup").length,
+        responderam,
+        taxa_resposta: abordados ? `${Math.round((responderam / abordados) * 100)}%` : "sem abordagens no período",
+        reunioes: reunioes ?? 0,
+        esperando_aprovacao: rascunhos ?? 0,
+        rotina_de_hoje: rot ?? "ainda não rodou hoje",
+      };
+    }
+    case "rodar_rotina_agora": {
+      const d: any = await agente(auth, { acao: "rotina" });
+      if (d.erro) return d;
+      return { ok: true, nota: "Rotina iniciada em segundo plano. Leva alguns minutos; os rascunhos aparecem em Aprovar envios e eu aviso aqui quando terminar." };
     }
     case "abordagens_pendentes": {
       const tres = new Date(Date.now() - 3 * 86400e3).toISOString();

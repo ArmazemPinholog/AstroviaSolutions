@@ -71,6 +71,8 @@ function paraClaude(contents: any[]) {
     let j = 0;
     for (const p of c.parts ?? []) {
       if (p.thought) continue;
+      // raciocínio do Claude volta intacto na mesma rodada de ferramentas (a API exige)
+      if (p.claudeBloco) { if (role === "assistant") blocos.push(p.claudeBloco); continue; }
       if (p.text) blocos.push({ type: "text", text: p.text });
       else if (p.functionCall) {
         const id = p.functionCall.id ?? `t${i}_${j++}`;
@@ -102,8 +104,9 @@ async function chamarClaude(system: string, contents: any[], tools: any[], tempe
     headers: { "content-type": "application/json", "x-api-key": CLAUDE_KEY(), "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: modelo,
-      max_tokens: 2048,
-      temperature: temperatura,
+      max_tokens: 4096,
+      // Sonnet/Opus 5.x não aceitam temperature (a API devolve 400); Haiku 4.5 aceita
+      ...(/claude-(sonnet|opus|fable)-5/.test(modelo) ? { output_config: { effort: "low" } } : { temperature: temperatura }),
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: paraClaude(contents),
       ...(declaracoes.length ? { tools: declaracoes } : {}),
@@ -111,12 +114,20 @@ async function chamarClaude(system: string, contents: any[], tools: any[], tempe
   });
   if (!r.ok) throw new Error(`claude ${r.status}: ${(await r.text()).slice(0, 300)}`);
   const d = await r.json();
+  if (d.stop_reason === "refusal") throw new Error("claude recusou");
   const parts = (d.content ?? []).map((b: any) =>
-    b.type === "tool_use" ? { functionCall: { id: b.id, name: b.name, args: b.input ?? {} } } : b.type === "text" ? { text: b.text } : null
+    b.type === "tool_use" ? { functionCall: { id: b.id, name: b.name, args: b.input ?? {} } }
+    : b.type === "text" ? { text: b.text }
+    : b.type === "thinking" || b.type === "redacted_thinking" ? { claudeBloco: b }
+    : null
   ).filter(Boolean);
-  if (!parts.length) throw new Error("claude sem resposta");
+  if (!parts.some((p: any) => p.text || p.functionCall)) throw new Error("claude sem resposta");
   return { role: "model", parts };
 }
+
+/** o Gemini não entende os blocos de raciocínio do Claude */
+const semBlocosClaude = (contents: any[]) =>
+  contents.map((c) => ({ ...c, parts: (c.parts ?? []).filter((p: any) => !p.claudeBloco) })).filter((c) => c.parts.length);
 
 /** conversa com ferramentas no motor escolhido; devolve sempre no formato do Gemini */
 export async function conversar(system: string, contents: unknown[], tools: unknown[], temperatura = 0.6, m: Motor = {}) {
@@ -130,7 +141,7 @@ export async function conversar(system: string, contents: unknown[], tools: unkn
   try {
     return await chamarGemini({
       systemInstruction: { parts: [{ text: system }] },
-      contents,
+      contents: semBlocosClaude(contents as any[]),
       tools,
       generationConfig: { temperature: temperatura, maxOutputTokens: 4096 },
     }, m.pensar);

@@ -22,7 +22,7 @@ export const STATUS_LEAD = [
   { id: "descartado", label: "Descartado", color: "#ff2fd0" },
 ];
 
-export const FONTES = { google: "Google Maps", instagram: "Instagram", manual: "Manual" };
+export const FONTES = { google: "Google Maps", instagram: "Instagram", manual: "Manual", receita: "CNPJ novo (Receita)" };
 
 export const corScore = (s) => (s >= 70 ? "#34d399" : s >= 45 ? "#22d3ee" : s >= 25 ? "#fbbf24" : "#8a8f98");
 

@@ -1,0 +1,47 @@
+# CNPJs recém-abertos em Curitiba (dados abertos da Receita Federal) → leads da Astra.
+# A Receita publica a base uma vez por mês; rodamos duas vezes para pegar a publicação nova cedo.
+# Os leads entram como "novo" na Prospecção e a rotina diária da Astra investiga e escreve
+# as mensagens em rascunho. Nada é enviado sem aprovação.
+#
+# Precisa do secret ASTRA_CHAVE_CNPJ (Settings → Secrets and variables → Actions).
+# O valor está no Vault do Supabase: SQL Editor →
+#   select decrypted_secret from vault.decrypted_secrets where name = 'astra_chave_cnpj';
+name: CNPJs novos para a Astra
+
+on:
+  schedule:
+    - cron: "40 9 5,20 * *" # dias 5 e 20, 6h40 em Brasília
+  workflow_dispatch:
+    inputs:
+      dias:
+        description: "Abertos nos últimos N dias"
+        default: "90"
+      teste:
+        description: "Só contar (não enviar)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cnpj-novos
+  cancel-in-progress: false
+
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Baixar, filtrar e enviar
+        env:
+          ASTRA_CHAVE_CNPJ: ${{ secrets.ASTRA_CHAVE_CNPJ }}
+          DIAS: ${{ inputs.dias || '90' }}
+          RECEITA_BASE: ${{ vars.RECEITA_BASE }}
+        run: |
+          [ -z "$RECEITA_BASE" ] && unset RECEITA_BASE
+          python3 scripts/cnpj_novos.py ${{ inputs.teste && '--teste' || '' }}
