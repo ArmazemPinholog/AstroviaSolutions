@@ -6,6 +6,7 @@ import { conversar } from "./gemini.ts";
 import { limpar } from "./seguranca.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { executarGestao, ferramentasGestao } from "./gestao.ts";
+import { executarProspeccao, ferramentasProspeccao, nomesProspeccao } from "./prospeccao.ts";
 
 const TIPOS = ["regra", "informacao", "preco", "resposta", "tom"];
 
@@ -220,7 +221,7 @@ async function executar(t: any, nome: string, a: any, ctx: Ctx) {
   return { erro: "ferramenta desconhecida" };
 }
 
-export type Ctx = { db: SupabaseClient; perfilId?: string; nomeDono?: string };
+export type Ctx = { db: SupabaseClient; perfilId?: string; nomeDono?: string; auth?: string };
 
 export async function mestre(tenantSlug: string, texto: string, ctx: Ctx) {
   const { data: t } = await sb.from("astra_tenants").select("*").eq("slug", tenantSlug).eq("ativo", true).maybeSingle();
@@ -241,7 +242,7 @@ export async function mestre(tenantSlug: string, texto: string, ctx: Ctx) {
 
   const nomeIA = t.config?.nome_ia ?? "a assistente";
   const gestao = !!t.config?.integrar_gestao;
-  const ferramentas = [{ functionDeclarations: gestao ? [...ferramentasBase, ...ferramentasGestao] : ferramentasBase }];
+  const ferramentas = [{ functionDeclarations: gestao ? [...ferramentasBase, ...ferramentasGestao, ...ferramentasProspeccao] : ferramentasBase }];
   const system = `Você é ${nomeIA}, a inteligência interna de ${t.nome}. Agora você está conversando com ${
     ctx.nomeDono ? ctx.nomeDono + ", da equipe dona da empresa" : "o DONO da empresa"
   }, não com um cliente.${
@@ -256,6 +257,7 @@ Seu papel: ser o braço direito dele, como uma funcionária exemplar e leal. Rel
 - Antes de esquecer um aprendizado, confirme qual é. Nunca apague dados de clientes.
 - Se ele pedir algo que você não consegue fazer pelas ferramentas, diga com clareza.
 - Seja proativa como uma funcionária de confiança: em relatórios e balanços, termine com UMA sugestão concreta de melhoria (no negócio, no processo de vendas ou em você mesma), dizendo o porquê. Quando ele pedir avaliação do atendimento, use revisar_atendimentos e aponte o que mudar na sua base, no tom ou na oferta, propondo o texto exato para ele aprovar.
+- Prospecção: você acha clientes novos para a empresa. Quando ele pedir leads ou clientes, garimpe (garimpar_clientes), escolha os melhores, investigue (investigar_lead) e prepare a mensagem (preparar_abordagem), no máximo 3 por vez. As mensagens ficam em rascunho na aba Prospecção para ele aprovar e enviar: nunca diga que enviou. Ao apresentar, diga por que cada lead é bom em uma frase. Lembre dos follow-ups pendentes (abordagens_pendentes).
 - Escreva para ser lida em voz alta também: frases curtas, sem tabelas, sem markdown, números por extenso quando forem poucos.
 Data e hora: ${
     new Intl.DateTimeFormat("pt-BR", { timeZone: t.config?.agenda?.fuso ?? "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" }).format(new Date())
@@ -289,7 +291,9 @@ ${await aprendizados(t.id) || "(nenhum ainda)"}
         let r: unknown;
         acoes.push(p.functionCall.name);
         try {
-          r = await executar(t, p.functionCall.name, p.functionCall.args ?? {}, ctx);
+          r = nomesProspeccao.has(p.functionCall.name)
+            ? await executarProspeccao(ctx.db, p.functionCall.name, p.functionCall.args ?? {}, ctx.auth)
+            : await executar(t, p.functionCall.name, p.functionCall.args ?? {}, ctx);
           if (p.functionCall.name === "ensinar" && (r as any)?.ok) ensinados.push(limpar(p.functionCall.args?.conteudo, 300));
         } catch (e) {
           console.error("mestre", p.functionCall.name, e);

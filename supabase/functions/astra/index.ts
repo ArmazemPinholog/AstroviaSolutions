@@ -59,7 +59,7 @@ async function membroDaSala(req: Request) {
   const { data: u } = await db.auth.getUser();
   if (!u?.user) return null;
   const { data: perfil } = await db.from("gestao_perfis").select("id, nome").eq("id", u.user.id).maybeSingle();
-  return { db, perfilId: u.user.id, nome: perfil?.nome ?? u.user.email ?? undefined };
+  return { db, auth, perfilId: u.user.id, nome: perfil?.nome ?? u.user.email ?? undefined };
 }
 
 async function processarWhatsApp(corpo: string) {
@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
         if (transcricao && transcricao !== "[sem fala]") texto = transcricao;
       }
       if (!texto) return json(req, { erro: "mensagem vazia" }, 400);
-      const r = await mestre(limpar(corpoJson.tenant, 60) || "astrovia", texto, { db: membro.db, perfilId: membro.perfilId, nomeDono: membro.nome });
+      const r = await mestre(limpar(corpoJson.tenant, 60) || "astrovia", texto, { db: membro.db, auth: membro.auth, perfilId: membro.perfilId, nomeDono: membro.nome });
       return json(req, { ...r, transcricao: transcricao || undefined, partes: dividir(r.resposta) });
     } catch (e) {
       console.error("mestre", e);

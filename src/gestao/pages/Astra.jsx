@@ -28,6 +28,8 @@ async function astra(body) {
 
 const ATALHOS = [
   "Bom dia, Astra. Como estamos hoje?",
+  "Ache 3 clientes novos pra mim e prepare as mensagens.",
+  "Quem eu preciso abordar ou cobrar resposta hoje?",
   "O que está atrasado e o que eu faço primeiro?",
   "Quais perguntas você não soube responder?",
   "Avalie seus atendimentos e me diga o que melhorar.",
