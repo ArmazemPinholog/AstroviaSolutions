@@ -48,6 +48,5 @@ jobs:
           ASTRA_CHAVE_CNPJ: ${{ secrets.ASTRA_CHAVE_CNPJ }}
           DIAS: ${{ inputs.dias || '90' }}
           RECEITA_BASE: ${{ vars.RECEITA_BASE }}
-        run: |
-          [ -z "$RECEITA_BASE" ] && unset RECEITA_BASE
-          python3 scripts/cnpj_novos.py ${{ inputs.teste && '--teste' || '' }}
+        shell: bash
+        run: python scripts/cnpj_novos.py ${{ inputs.teste && '--teste' || '' }}

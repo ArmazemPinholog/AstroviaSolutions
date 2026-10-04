@@ -34,10 +34,10 @@ import urllib.request
 import zipfile
 from datetime import date, datetime, timedelta
 
-BASE = os.environ.get("RECEITA_BASE", "https://arquivos.receitafederal.gov.br/dados/cnpj/dados_abertos_cnpj").rstrip("/")
-MUNICIPIO = os.environ.get("MUNICIPIO_RECEITA", "7535")  # Curitiba
-DIAS = int(os.environ.get("DIAS", "90"))
-FUNCAO = os.environ.get("ASTRA_URL", "https://jfariprplbmuorzdhhav.supabase.co/functions/v1/gestao-agente")
+BASE = (os.environ.get("RECEITA_BASE") or "https://arquivos.receitafederal.gov.br/dados/cnpj/dados_abertos_cnpj").rstrip("/")
+MUNICIPIO = (os.environ.get("MUNICIPIO_RECEITA") or "7535")  # Curitiba
+DIAS = int(os.environ.get("DIAS") or "90")
+FUNCAO = (os.environ.get("ASTRA_URL") or "https://jfariprplbmuorzdhhav.supabase.co/functions/v1/gestao-agente")
 CHAVE = os.environ.get("ASTRA_CHAVE_CNPJ", "")
 PASTA = os.environ.get("PASTA_TMP") or os.path.join(tempfile.gettempdir(), "cnpj")
 
@@ -70,7 +70,7 @@ def log(*a):
 UA = {"User-Agent": "Mozilla/5.0 Astrovia"}
 SITE_RECEITA = "https://arquivos.receitafederal.gov.br"
 # compartilhamento público (Nextcloud) onde a Receita passou a publicar os dados do CNPJ
-SHARE = os.environ.get("RECEITA_SHARE", "YggdBLfdninEJX9")
+SHARE = (os.environ.get("RECEITA_SHARE") or "YggdBLfdninEJX9")
 
 
 def pedir(url, metodo="GET", headers=None, dados=None, timeout=60):
