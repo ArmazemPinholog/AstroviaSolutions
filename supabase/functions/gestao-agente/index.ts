@@ -1196,7 +1196,8 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
   let garimpos = reg.garimpos || 0, erro: string | null = null, semLeads = false;
 
   const contar = async (tipo: string) => {
-    const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", tipo).gte("criado_em", desde);
+    // descartadas não contam: se você descartou, a rotina repõe com outro lead
+    const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", tipo).in("status", ["rascunho", "enviada"]).gte("criado_em", desde);
     return new Set((data || []).map((x) => x.prospect_id)).size;
   };
 

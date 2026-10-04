@@ -621,14 +621,17 @@ function Aprovar() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useAoMudar(load);
+  // a rotina e a Astra podem criar rascunhos a qualquer momento
+  useEffect(() => { const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
 
   const enviar = async (a) => {
     const p = a.gestao_prospects;
     const url = a.canal === "whatsapp" && waLink(p.telefone) ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}`
       : p.instagram ? `https://ig.me/m/${p.instagram}` : null;
     if (!url) { setMsg(`${p.nome} não tem WhatsApp nem Instagram.`); return; }
-    if (a.canal !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); } catch { /* sem clipboard */ } }
+    // abre antes de qualquer espera, senão o navegador bloqueia a nova aba
     window.open(url, "_blank", "noopener");
+    if (a.canal !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada: cole no Direct do Instagram."); } catch { /* sem clipboard */ } }
     const agora = new Date().toISOString();
     await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora }).eq("id", a.id);
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
@@ -646,7 +649,12 @@ function Aprovar() {
   return (
     <div className="space-y-3">
       {msg && <p className="text-sm text-[#ff9be9]">{msg}</p>}
-      {!lista.length && <Empty>Nada para aprovar. A rotina deixa leads novos aqui toda manhã; ou peça para a Astra: "Ache 3 clientes novos pra mim e prepare as mensagens."</Empty>}
+      {!lista.length && (
+        <Empty>
+          Nada para aprovar agora. A rotina enche esta fila toda manhã.
+          <span className="mt-3 block"><Btn size="sm" variant="ghost" onClick={async () => { setMsg(""); try { await agente("rotina"); setMsg("Preparando mensagens… elas aparecem aqui em alguns minutos."); } catch (e) { setMsg(e.message); } }}><Play size={13} /> Preparar mensagens agora</Btn></span>
+        </Empty>
+      )}
       {lista.map((a) => (
         <Card key={a.id} className="p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
