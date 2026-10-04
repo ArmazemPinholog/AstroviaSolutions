@@ -63,3 +63,22 @@ Perfis pessoais não aparecem no Business Discovery.
    - `VITE_GESTAO_SUPABASE_KEY` = chave publishable do projeto novo
    e faça um novo deploy. O código não precisa mudar.
 8. Depois de conferir tudo, apague as tabelas `gestao_*` e a função do projeto da Lobas.
+
+## Astra — a inteligência da Astrovia
+
+Tabelas `astra_*` (migração `20261004_astra.sql`) e a Edge Function `astra` (`verify_jwt: false`, com autenticação própria).
+A aba **Astra** da sala conversa com ela no modo dono (login da sala), testa o atendimento e guarda os ajustes.
+
+| Entrada | Quem pode |
+|---|---|
+| Sala de Gestão (login) | Membros da equipe: modo dono, testes, feedback |
+| WhatsApp oficial (webhook assinado pela Meta) | Clientes → atendimento; número salvo no perfil de alguém da equipe → modo dono |
+| `x-demo-key` | Chat público de demonstração (opcional) |
+
+| Secret | Para quê |
+|---|---|
+| `GEMINI_API_KEY` | Já existe; a Astra usa a mesma |
+| `WA_TOKEN`, `WA_APP_SECRET`, `WA_VERIFY_TOKEN` | Ligar o WhatsApp oficial (Meta) |
+| `DEMO_KEY` | Opcional: chat público no site |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Opcional: agenda no Google Agenda |
+| `ORIGENS_PERMITIDAS` | Opcional: domínios que podem chamar a função pelo navegador |

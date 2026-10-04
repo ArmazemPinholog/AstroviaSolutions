@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard, Users, SquareKanban, FolderKanban, Wallet, ListChecks, UserCog, UserRound,
-  LogOut, RefreshCw, Menu, X, Lock, KeyRound, Radar, Clapperboard,
+  LogOut, RefreshCw, Menu, X, Lock, KeyRound, Radar, Clapperboard, Sparkles,
 } from "lucide-react";
 import { sb, T } from "./supabase";
 import { Ctx, Btn, Field, Input, Card, Avatar } from "./ui";
@@ -15,6 +15,7 @@ import Financeiro from "./pages/Financeiro";
 import Tarefas from "./pages/Tarefas";
 import Equipe from "./pages/Equipe";
 import Perfil from "./pages/Perfil";
+import Astra from "./pages/Astra";
 import logo from "../assets/logo.png";
 
 /* ============================================================
@@ -24,6 +25,7 @@ import logo from "../assets/logo.png";
 
 const PAGES = [
   { id: "painel", label: "Visão geral", icon: LayoutDashboard, el: Painel },
+  { id: "astra", label: "Astra", icon: Sparkles, el: Astra },
   { id: "clientes", label: "Clientes", icon: Users, el: Clientes },
   { id: "prospeccao", label: "Prospecção", icon: Radar, el: Prospeccao },
   { id: "conteudo", label: "Conteúdo", icon: Clapperboard, el: Conteudo },
