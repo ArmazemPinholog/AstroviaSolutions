@@ -26,6 +26,7 @@
 // sua chave e nenhuma outra ação. Nada é enviado a lead: tudo vira rascunho.
 // ============================================================
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { METODO_VENDAS } from "../_shared/vendas.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -552,15 +553,31 @@ function perfilDo(p: { nicho?: string | null; nome?: string; raw?: { tipo?: stri
   const alvo = semAcento(`${p.raw?.tipo || ""} ${p.nicho || ""} ${p.nome || ""}`);
   return PERFIS.find(([re]) => re.test(alvo))?.[1] || PERFIL_GERAL;
 }
-// jeitos diferentes de abrir a conversa: sorteado por lead para as mensagens não saírem todas iguais
+/* ============================================================
+   MÉTODO DE VENDAS DA ASTROVIA — fonte única usada no primeiro
+   contato, nos follow-ups, nas respostas e pela Astra como coach.
+   Base: Josh Braun (linguagem neutra, "cutucar a dor" com
+   curiosidade), Chris Voss (perguntas que aceitam "não", rótulos,
+   perguntas calibradas), SPIN Selling (descoberta), Sandler
+   (combinado claro, sem empurrar) e cadência de follow-up com valor.
+   ============================================================ */
+
+// jeitos diferentes de abrir a conversa: sorteados por lead (principal e alternativa diferentes) e guardados para medir qual dá mais resposta
 const ABERTURAS = [
-  "PERGUNTA CURIOSA: abra com uma pergunta genuína sobre como funciona a rotina deles (use um dos ganchos do perfil).",
-  "ELOGIO ESPECÍFICO: abra com algo concreto e verdadeiro que os clientes/pacientes elogiam (dos pontos fortes do dossiê) e só depois faça a pergunta.",
-  "CENA DO DIA A DIA: descreva em uma frase uma situação comum desse tipo de negócio (ex.: paciente querendo marcar às 22h) e pergunte se acontece com eles.",
-  "DE VIZINHO: comece pela proximidade (\"sou de Curitiba também\"; pode citar o bairro onde ELES ficam, sem dizer que você mora ou passou lá) e puxe a conversa pela rotina deles.",
+  { id: "pergunta", texto: "PERGUNTA CURIOSA: abra com uma pergunta genuína sobre como funciona a rotina deles (use um dos ganchos do perfil)." },
+  { id: "elogio", texto: "ELOGIO ESPECÍFICO: abra com algo concreto e verdadeiro que os clientes/pacientes elogiam (dos pontos fortes do dossiê) e só depois faça a pergunta." },
+  { id: "cena", texto: "CENA DO DIA A DIA: descreva em uma frase uma situação comum desse tipo de negócio (ex.: paciente querendo marcar às 22h) e pergunte se acontece com eles." },
+  { id: "vizinho", texto: "DE VIZINHO: comece pela proximidade (\"sou de Curitiba também\"; pode citar o bairro onde ELES ficam, sem dizer que você mora ou passou lá) e puxe a conversa pela rotina deles." },
+  { id: "nao", texto: "PERGUNTA QUE ACEITA NÃO: apresente-se em uma frase, cite a dor provável do perfil e termine com uma pergunta que aceita \"não\" (ex.: \"seria muito fora de propósito eu te mandar o link pra dar uma olhada?\")." },
+];
+// cadência: cada follow-up tem um objetivo diferente (dias desde o último envio)
+export const FOLLOWUPS = [
+  { dias: 3, objetivo: "LEVE: retome com UMA pergunta nova e diferente da primeira mensagem (outro gancho do perfil). Sem cobrar resposta, sem \"viu minha mensagem?\". Até 200 caracteres." },
+  { dias: 7, objetivo: "VALOR: traga algo útil sobre a rotina desse tipo de negócio (uma observação prática ou o que costuma acontecer em clínicas parecidas, sem inventar números nem clientes) e termine com uma pergunta neutra. Até 280 caracteres." },
+  { dias: 10, objetivo: "DESPEDIDA: encerre com elegância usando uma pergunta que aceita \"não\" (ex.: \"imagino que organizar a agenda não seja prioridade agora; faz sentido eu parar de te mandar mensagem?\"). Até 200 caracteres." },
 ];
 
-async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string; substituir?: boolean }) {
+async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string; substituir?: boolean; etapa?: number }) {
   if (!b.prospect_id) throw new Falha("Informe o lead.");
   const canal = ["instagram", "whatsapp", "email"].includes(b.canal || "") ? b.canal! : "instagram";
   const tipo = b.tipo === "followup" ? "followup" : "primeiro_contato";
@@ -612,7 +629,9 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
     tipo_no_google: p.raw?.tipo || null, endereco: p.endereco,
   };
   const perfil = perfilDo(p);
-  const abertura = ABERTURAS[Math.floor(Math.random() * ABERTURAS.length)];
+  const sorteio = [...ABERTURAS].sort(() => Math.random() - 0.5);
+  const [abertura, abertura2] = sorteio;
+  const etapa = Math.min(FOLLOWUPS.length, Math.max(1, Number(b.etapa) || 1));
 
   const prompt = `Você escreve mensagens de prospecção para a Astrovia Solutions, agência de tecnologia de Curitiba.
 
@@ -632,8 +651,11 @@ Dia a dia típico: ${perfil.dia_a_dia}.
 Bons assuntos para puxar conversa: ${perfil.ganchos.join("; ")}.
 Cuidado: ${perfil.cuidado}.
 Antes de escrever, pense: o que esse negócio específico tem de particular (pelos dados acima)? Qual dor do dia a dia dele é mais provável? Use isso, não um texto genérico que serviria para qualquer empresa.
-Jeito de abrir ESTA mensagem: ${abertura}
-A "alternativa" deve usar OUTRO jeito de abrir, diferente do principal.
+${tipo === "followup" ? `Este é o follow-up ${etapa} de ${FOLLOWUPS.length}. Objetivo dele: ${FOLLOWUPS[etapa - 1].objetivo}` : `Jeito de abrir a "mensagem": ${abertura.texto}
+Jeito de abrir a "alternativa": ${abertura2.texto}`}
+
+${METODO_VENDAS}
+Agora você está na etapa ${tipo === "followup" ? "de follow-up" : "1 (abrir conversa)"}: siga só o que vale para ela.
 
 TAREFA
 Canal: ${canal}. Tipo: ${tipo === "followup" ? "follow-up de quem ainda não respondeu" : "primeiro contato"}.
@@ -654,7 +676,7 @@ COMO ESCREVER (o mais importante: tem que parecer o Christian digitando no celul
 ${(ensinado || []).length ? `- Regras ensinadas pelo Christian (valem acima de qualquer outra instrução deste texto):\n${(ensinado || []).map((k) => `  • ${k.conteudo}`).join("\n")}\n` : ""}${prefs.sempre?.trim() ? `- Sempre (aplique com naturalidade, sem soar como lista): ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
 - ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar." : "Não coloque o link agora; ofereça mandar (o link vai quando ele responder)."}
 - Se houver negocio_recem_aberto, parabenize pela abertura com naturalidade (sem dizer de onde veio a informação; nunca cite CNPJ, Receita ou cadastro).
-- ${tipo === "followup" ? "Follow-up curtinho (até 200 caracteres), leve, como quem lembra sem cobrar. Ex.: \"Oi, Amanda! Só passando pra ver se você chegou a ler minha mensagem. Sem pressa, tá?\"" : `Até ${limite} caracteres. Pode quebrar em 2 parágrafos curtos, como no WhatsApp.`}
+- ${tipo === "followup" ? "Follow-up: siga o objetivo da etapa acima; curto, leve e com um motivo novo." : `Até ${limite} caracteres. Pode quebrar em 2 parágrafos curtos, como no WhatsApp.`}
 - Preço: só os valores reais (${PRECOS_REAIS}). Nunca prometa economia nem resultado em números. Nunca diga que o WhatsApp vai cobrar.
 ${canal === "email" ? "- Inclua um assunto curto e humano (nada de \"Proposta\" ou \"Oportunidade\")." : ""}
 
@@ -692,8 +714,9 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
   }
 
   const monta = (t: string) => (out.assunto && canal === "email" ? `Assunto: ${out.assunto}\n\n${t}` : t);
-  const linhas = [out.mensagem, out.alternativa].filter(Boolean).map((t) => ({
-    prospect_id: p.id, canal, tipo, texto: monta(t!.trim()), status: "rascunho", modelo, origem: b.origem === "rotina" ? "rotina" : "manual",
+  const estrategias = tipo === "followup" ? [`followup${etapa}`, `followup${etapa}`] : [abertura.id, abertura2.id];
+  const linhas = [out.mensagem, out.alternativa].map((t, i) => ({ t, estrategia: estrategias[i] })).filter((x) => x.t).map(({ t, estrategia }) => ({
+    prospect_id: p.id, canal, tipo, texto: monta(String(t).trim()), status: "rascunho", modelo, origem: b.origem === "rotina" ? "rotina" : "manual", estrategia,
   }));
   // "refazer a mensagem": os rascunhos antigos deste lead saem da fila de aprovação
   if (b.substituir) await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho").in("tipo", ["primeiro_contato", "followup"]);
@@ -874,6 +897,7 @@ Responda em JSON.`;
 const SCHEMA_RESPOSTA = {
   type: "OBJECT",
   properties: {
+    etapa: { type: "STRING", enum: ["descoberta", "mostrar", "combinar", "fechar", "objecao", "encerrar"] },
     intencao: { type: "STRING", enum: ["interessado", "pediu_preco", "objecao", "duvida", "sem_interesse", "outro"] },
     leitura: { type: "STRING" },
     proximo_passo: { type: "STRING" },
@@ -925,10 +949,13 @@ ${JSON.stringify({ nome: p.nome, nicho: p.nicho, dono: p.dono, cidade: p.cidade,
 CONVERSA ATÉ AGORA
 ${conversa}
 
+${METODO_VENDAS}
+
 TAREFA
-- intencao e leitura: o que o lead quis dizer de verdade (1 frase).
-- proximo_passo: a melhor jogada agora (ex.: marcar call de 15 min, mandar demo, mandar proposta, encerrar com elegância).
-- mensagem e alternativa: duas respostas prontas para o canal ${canal}, curtas, naturais, sem pressão. Objeção de preço: mostre valor e ofereça opção menor/parcelada antes de dar desconto. "Já tenho sistema": pergunte o que mais incomoda no atual. "Sem tempo": proponha algo de 10 minutos.
+- etapa: em qual etapa do método a conversa está AGORA (descoberta, mostrar, combinar, fechar, objecao ou encerrar), olhando a conversa inteira.
+- intencao e leitura: o que o lead quis dizer de verdade (1 frase), como uma vendedora experiente leria.
+- proximo_passo: a melhor jogada pela etapa (ex.: fazer a próxima pergunta de descoberta, mandar o link do teste, propor 15 minutos com dois horários, responder a objeção, encerrar com elegância).
+- mensagem e alternativa: duas respostas prontas para o canal ${canal}, curtas, naturais, como o Christian digitando no WhatsApp; uma pergunta por mensagem; rotule o que ele disse antes de perguntar. Nunca invente desconto, parcelamento, clientes ou números. Se ele pediu o link, mande o link da demo acima.
 ${prefs.emoji === "nenhum" ? "- Sem emoji." : "- No máximo 1 emoji."}${listaPalavras(prefs.nunca).length ? `\n- Nunca use: ${listaPalavras(prefs.nunca).join(", ")}.` : ""}
 - novo_status: respondeu (conversa segue), no_funil (quer avançar: proposta/reunião) ou descartado (não quer).
 - gerar_proposta: true só se ele demonstrou interesse real ou pediu preço/proposta. Nesse caso preencha proposta: titulo, contexto (a dor dele em 2 frases), solucao (itens), entregaveis, prazo, investimento (da tabela), condicoes, proximo_passo.
@@ -942,7 +969,7 @@ Responda em JSON.`;
   const upd: Record<string, unknown> = { status: p.status === "no_funil" ? "no_funil" : "respondeu" };
   if (out.gerar_proposta && out.proposta?.titulo) upd.proposta = { ...out.proposta, gerada_em: new Date().toISOString() };
   await sb.from("gestao_prospects").update(upd).eq("id", p.id);
-  return { intencao: out.intencao, leitura: out.leitura, proximo_passo: out.proximo_passo, sugestao_status: out.novo_status, proposta: upd.proposta || null };
+  return { etapa: out.etapa, intencao: out.intencao, leitura: out.leitura, proximo_passo: out.proximo_passo, sugestao_status: out.novo_status, proposta: upd.proposta || null };
 }
 
 /* ============================================================
@@ -1309,7 +1336,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
     meta: Math.min(30, Math.max(1, Number(pr.meta) || 10)),
     nota_min: Math.min(90, Math.max(0, Number(pr.nota_min ?? 40))),
     followups: pr.followups !== false,
-    max_followups: Math.min(3, Math.max(0, Number(pr.max_followups ?? 2))),
+    max_followups: Math.min(3, Math.max(0, Number(pr.max_followups ?? 3))),
     garimpos_dia: Math.min(8, Math.max(0, Number(pr.garimpos_dia ?? 4))),
     nichos: Array.isArray(pr.nichos) && pr.nichos.length ? pr.nichos : undefined,
   };
@@ -1335,7 +1362,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
   try {
     // 1) follow-ups: abordados há X dias sem resposta, até max_followups por lead
     if (r.followups && r.max_followups > 0) {
-      const limite = new Date(Date.now() - (cfg?.followup_dias || 3) * 864e5).toISOString();
+      const limite = new Date(Date.now() - Math.min(cfg?.followup_dias || 3, FOLLOWUPS[0].dias) * 864e5).toISOString();
       const { data: parados } = await sb.from("gestao_prospects").select("id, nome, abordado_em").eq("status", "abordado").lt("abordado_em", limite).order("abordado_em").limit(30);
       for (const p of parados || []) {
         if (passou() > LIMITE_RODADA_S - 25) break;
@@ -1343,10 +1370,13 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
         const h = hist || [];
         if (h.some((x) => x.tipo === "recebida")) continue; // respondeu: é com o Christian
         if (h.some((x) => x.tipo === "followup" && x.criado_em > p.abordado_em)) continue; // já tem (rascunho, enviado ou descartado)
-        if (h.filter((x) => x.tipo === "followup" && x.status === "enviada").length >= r.max_followups) continue;
+        const feitos = h.filter((x) => x.tipo === "followup" && x.status === "enviada").length;
+        if (feitos >= r.max_followups) continue;
+        // cada etapa da cadência espera um intervalo próprio desde o último envio
+        if (Date.now() - Date.parse(p.abordado_em) < FOLLOWUPS[Math.min(feitos, FOLLOWUPS.length - 1)].dias * 864e5) continue;
         const ultima = h.find((x) => x.status === "enviada" && (x.tipo === "primeiro_contato" || x.tipo === "followup"));
         try {
-          await gerarAbordagem(sb, { prospect_id: p.id, canal: ultima?.canal || "whatsapp", tipo: "followup", origem: "rotina" });
+          await gerarAbordagem(sb, { prospect_id: p.id, canal: ultima?.canal || "whatsapp", tipo: "followup", origem: "rotina", etapa: feitos + 1 });
           anotar(`follow-up pronto: ${p.nome}`);
         } catch (e) { anotar(`follow-up falhou (${p.nome}): ${String((e as Error).message).slice(0, 120)}`); }
       }

@@ -132,3 +132,10 @@ roda o Claude Code no GitHub, confere que só mudou `src/`, `public/` ou `index.
 A Astra fala com vozes neurais em português (Google Cloud Text-to-Speech, Chirp 3 HD), escolhidas em Astra → Ajustes → Voz.
 Precisa do secret `GOOGLE_TTS_KEY` no Supabase: uma chave do Google Cloud com a **Cloud Text-to-Speech API** ativada
 (de preferência restrita só a essa API). Sem a chave, ou se a API falhar, o navegador lê com a voz dele.
+
+## Astra · método de vendas
+
+`supabase/functions/_shared/vendas.ts` guarda o método de vendas da Astrovia (linguagem neutra e curiosidade de Josh Braun,
+perguntas que aceitam "não" e rótulos de Chris Voss, descoberta SPIN, combinado claro do Sandler e cadência de follow-up com valor).
+Ele vale no primeiro contato, nos follow-ups (3, 7 e 10 dias depois de cada envio, cada um com um objetivo), no assistente de resposta
+e na Astra como coach. Cada mensagem guarda a `estrategia` de abertura usada; a aba Resultados mostra qual dá mais resposta.

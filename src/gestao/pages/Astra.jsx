@@ -678,6 +678,7 @@ function Aprovar() {
 /* ---------- resultados da prospecção + rotina diária ---------- */
 const PERIODOS = [[7, "7 dias"], [30, "30 dias"], [90, "90 dias"]];
 const FONTE_NOME = { google: "Google", instagram: "Instagram", manual: "Manual", receita: "CNPJ novo" };
+const ESTRATEGIA_NOME = { pergunta: "Pergunta curiosa", elogio: "Elogio específico", cena: "Cena do dia a dia", vizinho: "De vizinho (Curitiba)", nao: "Pergunta que aceita \"não\"" };
 const ROTINA_STATUS = { rodando: ["Em andamento", "#22d3ee"], concluida: ["Meta batida", "#34d399"], parcial: ["Abaixo da meta", "#fbbf24"], erro: ["Com erro", "#ff2fd0"] };
 
 function Resultados() {
@@ -692,7 +693,7 @@ function Resultados() {
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
     const [nov, env, rec, reu, notas, rot, cfg, rasc] = await Promise.all([
       sb.from("gestao_prospects").select("fonte").gte("criado_em", desde).limit(5000),
-      sb.from("gestao_abordagens").select("prospect_id, tipo, origem").eq("status", "enviada").in("tipo", ["primeiro_contato", "followup"]).gte("enviada_em", desde).limit(5000),
+      sb.from("gestao_abordagens").select("prospect_id, tipo, origem, estrategia").eq("status", "enviada").in("tipo", ["primeiro_contato", "followup"]).gte("enviada_em", desde).limit(5000),
       sb.from("gestao_abordagens").select("prospect_id").eq("tipo", "recebida").gte("criado_em", desde).limit(5000),
       sb.from("astra_reunioes").select("id", { count: "exact", head: true }).neq("status", "cancelada").gte("criado_em", desde),
       sb.from("gestao_notas").select("id", { count: "exact", head: true }).eq("tipo", "reuniao").gte("criado_em", desde),
@@ -704,13 +705,23 @@ function Resultados() {
     (nov.data || []).forEach((x) => { porFonte[x.fonte] = (porFonte[x.fonte] || 0) + 1; });
     const primeiros = (env.data || []).filter((x) => x.tipo === "primeiro_contato");
     const abordados = new Set(primeiros.map((x) => x.prospect_id)).size;
-    const responderam = new Set((rec.data || []).map((x) => x.prospect_id)).size;
+    const quemRespondeu = new Set((rec.data || []).map((x) => x.prospect_id));
+    const responderam = quemRespondeu.size;
+    // qual jeito de abrir a conversa dá mais resposta
+    const porEstrategia = {};
+    primeiros.filter((x) => x.estrategia).forEach((x) => {
+      const e = (porEstrategia[x.estrategia] ||= { enviadas: new Set(), respostas: new Set() });
+      e.enviadas.add(x.prospect_id);
+      if (quemRespondeu.has(x.prospect_id)) e.respostas.add(x.prospect_id);
+    });
     setD({
       leads: nov.data?.length || 0, porFonte, abordados, responderam,
       daRotina: new Set(primeiros.filter((x) => x.origem === "rotina").map((x) => x.prospect_id)).size,
       followups: (env.data || []).length - primeiros.length,
       reunioes: (reu.count || 0) + (notas.count || 0),
       aguardando: rasc.count || 0,
+      estrategias: Object.entries(porEstrategia).map(([id, e]) => ({ id, enviadas: e.enviadas.size, respostas: e.respostas.size }))
+        .sort((a, b) => b.respostas / b.enviadas - a.respostas / a.enviadas),
     });
     setRotinas(rot.data || []);
     const r = cfg.data?.prefs?.rotina || {};
@@ -769,6 +780,21 @@ function Resultados() {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card className="p-4">
+        <p className="mb-3 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee]">Qual abertura dá mais resposta</p>
+        {!d.estrategias.length ? <p className="text-sm text-titanium">Aparece aqui depois que você aprovar e enviar as primeiras mensagens novas.</p> : (
+          <ul className="space-y-1.5 text-sm">
+            {d.estrategias.map((e) => (
+              <li key={e.id} className="grid grid-cols-[1fr_auto] gap-3">
+                <span className="text-titanium-bright">{ESTRATEGIA_NOME[e.id] || e.id}</span>
+                <span className="tabular-nums text-titanium">{e.respostas}/{e.enviadas} · {Math.round((e.respostas / e.enviadas) * 100)}%</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {d.estrategias.some((e) => e.enviadas < 10) && <p className="mt-2 text-xs text-titanium">Com menos de 10 envios por tipo, a diferença ainda pode ser sorte.</p>}
       </Card>
 
       <Card className="space-y-3 p-4">
