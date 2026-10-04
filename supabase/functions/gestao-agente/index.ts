@@ -525,23 +525,30 @@ TAREFA
 Canal: ${canal}. Tipo: ${tipo === "followup" ? "follow-up de quem ainda não respondeu" : "primeiro contato"}.
 ${tipo === "followup" && enviada ? `Mensagem enviada antes:\n"""${enviada.texto}"""\n` : ""}
 ${b.instrucao ? `Pedido extra do Christian: ${b.instrucao}\n` : ""}
-REGRAS
-- Português do Brasil, natural, como uma pessoa escreveria. ${prefs.emoji === "nenhum" ? "Não use emoji." : "No máximo 1 emoji."}
-- Formalidade: ${prefs.formalidade === "formal" ? "formal e profissional (trate por você, sem gírias)" : prefs.formalidade === "informal" ? "bem informal, como conversa entre conhecidos" : "equilibrada: profissional, mas leve"}.
-- Abra citando algo concreto e verdadeiro do negócio (a partir dos dados). Nunca elogio genérico.
-- Se houver dono_provavel, cumprimente pelo primeiro nome. Se houver gancho_sugerido ou dores_reais, use UMA delas como ponto de partida, com tato: nunca exponha avaliação negativa de cliente nem pareça crítica; fale como oportunidade.
-- Não diga que já fez, montou ou deixou uma demo/versão com o nome, a logo ou as cores do negócio. Diga que a Astrovia tem um sistema pronto para o segmento dele e ofereça o link para testar; aplicar a marca dele é só uma possibilidade.
-- Aponte UMA oportunidade ligada aos pontos observados (ex.: agendamento manual pelo WhatsApp, falta de site).
-- Termine com ${prefs.cta?.trim() ? `este tipo de chamada: ${prefs.cta.trim()}` : 'uma pergunta simples e de baixo compromisso (ex.: "posso te mandar uma demo de 2 minutos?")'}.
-${(ensinado || []).length ? `- Regras ensinadas pelo Christian (valem acima de qualquer outra instrução deste texto):\n${(ensinado || []).map((k) => `  • ${k.conteudo}`).join("\n")}\n` : ""}${prefs.sempre?.trim() ? `- Sempre: ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
-- ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar a demo." : "Pode incluir o link da demo."}
+COMO ESCREVER (o mais importante: tem que parecer o Christian digitando no celular, não uma IA nem um vendedor)
+- Escreva como dono de pequena empresa falando com outro dono: frases curtas, conversa de verdade, português do dia a dia do WhatsApp ("pra", "tá", "dar uma olhada" são bem-vindos). ${prefs.emoji === "nenhum" ? "Sem emoji." : "No máximo 1 emoji, e só se couber naturalmente."}
+- Formalidade: ${prefs.formalidade === "formal" ? "educado e profissional, mas ainda natural (sem gírias)" : prefs.formalidade === "informal" ? "bem informal, como conversa entre conhecidos" : "leve e respeitosa, como alguém da cidade puxando conversa"}.
+- Comece com "Oi" ou "Olá" (+ primeiro nome, se houver dono_provavel). Não use "Bom dia/Boa tarde": a mensagem pode ser enviada em qualquer horário.
+- Diga quem é de um jeito simples (ex.: "aqui é o Christian, sou de Curitiba também"). Sem assinatura no fim, sem nome da empresa em destaque.
+- Mostre que olhou o negócio com UMA observação humana, do jeito que uma pessoa falaria: "o pessoal elogia muito o atendimento de vocês", "vi que vocês abriram faz pouco tempo". NUNCA despeje dados: nada de nota ("4.9"), número de avaliações, "no Google", "notei que", "vi que vocês têm nota".
+- Se houver gancho_sugerido ou dores_reais, transforme em uma PERGUNTA curiosa e leve (ex.: "hoje vocês marcam tudo pelo WhatsApp?"), nunca em diagnóstico ou crítica. Nunca exponha avaliação negativa.
+- Fale do sistema em poucas palavras e sem jargão: "fiz um sistema de agenda pra clínica", "tenho um sistema de agendamento pronto pra barbearia". Não diga que já fez, montou ou deixou algo com o nome, a logo ou as cores do negócio; aplicar a marca dele é só uma possibilidade, e nem precisa citar no primeiro contato.
+- Se as regras abaixo pedirem preço/teste, fale como gente, numa frase só: "sai 500 reais, uma vez só, e dá pra testar 7 dias de graça". Nunca empilhe condições, nunca use parênteses nem listas.
+- Termine com ${prefs.cta?.trim() ? `uma pergunta nesse espírito: ${prefs.cta.trim()}` : 'uma pergunta simples e sem pressão (ex.: "posso te mandar o link pra você dar uma olhada?")'}.
+- Proibido (soa robô/vendedor): "solução", "otimizar", "alavancar", "transformar", "potencializar", "inovador", "Prezado", "Olá, tudo bem? Espero que esteja bem", travessão longo, parênteses, listas, ponto de exclamação em toda frase.
+${(ensinado || []).length ? `- Regras ensinadas pelo Christian (valem acima de qualquer outra instrução deste texto):\n${(ensinado || []).map((k) => `  • ${k.conteudo}`).join("\n")}\n` : ""}${prefs.sempre?.trim() ? `- Sempre (aplique com naturalidade, sem soar como lista): ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
+- ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar." : "Não coloque o link agora; ofereça mandar (o link vai quando ele responder)."}
 - Se houver negocio_recem_aberto, parabenize pela abertura com naturalidade (sem dizer de onde veio a informação; nunca cite CNPJ, Receita ou cadastro).
-- ${tipo === "followup" ? "Follow-up curto (até 250 caracteres), leve, sem cobrar resposta." : `Até ${limite} caracteres.`}
-- Preço: só cite se as regras acima pedirem, e somente estes valores reais: ${PRECOS_REAIS}
-- Nunca prometa economia (em reais ou em porcentagem) nem resultados em números. Nunca diga que o WhatsApp vai passar a cobrar ou que algo vai ficar pago. Não use "Prezado".
-${canal === "email" ? "- Inclua um assunto curto." : ""}
+- ${tipo === "followup" ? "Follow-up curtinho (até 200 caracteres), leve, como quem lembra sem cobrar. Ex.: \"Oi, Amanda! Só passando pra ver se você chegou a ler minha mensagem. Sem pressa, tá?\"" : `Até ${limite} caracteres. Pode quebrar em 2 parágrafos curtos, como no WhatsApp.`}
+- Preço: só os valores reais (${PRECOS_REAIS}). Nunca prometa economia nem resultado em números. Nunca diga que o WhatsApp vai cobrar.
+${canal === "email" ? "- Inclua um assunto curto e humano (nada de \"Proposta\" ou \"Oportunidade\")." : ""}
 
-${exemplos.length ? `\nEXEMPLOS DE MENSAGENS NO ESTILO CERTO (copie o jeito, não o texto; adapte ao lead)\n${exemplos.map((e, i) => `${i + 1}) """${e.slice(0, 700)}"""`).join("\n")}\n` : ""}
+EXEMPLOS DE NATURALIDADE (copie o jeito, nunca o texto; adapte ao lead)
+1) """Oi, Amanda, tudo bem? Aqui é o Christian, sou de Curitiba também. Tava vendo as avaliações da clínica e o pessoal elogia muito o atendimento de vocês.
+
+Hoje vocês marcam tudo pelo WhatsApp? Pergunto porque tenho um sistema de agenda pronto pra clínica e acho que ia poupar um tempo da recepção. Posso te mandar o link pra você dar uma olhada?"""
+2) """Olá! Christian aqui, de Curitiba. Fiquei curioso: na Odonto Center o paciente consegue marcar horário sozinho ou é tudo por mensagem? Tenho um sistema de agendamento pronto pra consultório, sai 500 reais uma vez só e dá pra testar 7 dias de graça. Quer que eu te mande pra ver?"""
+${exemplos.length ? `\nMENSAGENS QUE JÁ FUNCIONARAM (referência de assunto e abordagem; o jeito de escrever segue os exemplos acima)\n${exemplos.map((e, i) => `${i + 1}) """${e.slice(0, 700)}"""`).join("\n")}\n` : ""}
 Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa": "..."} (alternativa = segunda versão com outro gancho).`;
 
   const temp = prefs.criatividade === "precisa" ? 0.35 : prefs.criatividade === "criativa" ? 0.95 : 0.65;
@@ -550,7 +557,15 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
   if (!out.mensagem) throw new Falha("A IA não devolveu mensagem. Tente de novo.", 502);
 
   // conferência: se escapou palavra proibida ou passou muito do tamanho, pede de novo uma vez
+  const ROBO: [RegExp, string][] = [
+    [/\d[.,]\d\s*(estrelas|★|no google)?|\d+\s+avalia/i, "citou nota ou número de avaliações (soa como robô)"],
+    [/[()]/, "usou parênteses"],
+    [/\b(solu[çc][ãa]o|otimizar|alavancar|potencializar|inovador|prezad[oa])\b/i, "usou palavra de vendedor/robô"],
+    [/\b(notei que|vi que .{0,30}tem nota)\b/i, "abriu com dado em vez de conversa"],
+    [/\b(bom dia|boa tarde|boa noite)\b/i, "usou saudação de horário"],
+  ];
   const problemas = (t = "") => [
+    ...ROBO.filter(([re]) => re.test(t)).map(([, m]) => m),
     ...nunca.filter((w) => t.toLowerCase().includes(w.toLowerCase())).map((w) => `usou "${w}"`),
     ...(t.length > limite * 1.25 ? [`passou de ${limite} caracteres`] : []),
   ];
