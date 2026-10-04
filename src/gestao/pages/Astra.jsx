@@ -50,6 +50,15 @@ function falar(texto, aoTerminar) {
   } catch { aoTerminar(); }
 }
 
+// A conversa fica guardada fora da tela: se você sair da Astra enquanto ela pensa,
+// a resposta chega aqui mesmo assim e aparece quando você voltar.
+const loja = {
+  dono: { msgs: null, estado: "idle", visivel: false },
+  cliente: { msgs: [], estado: "idle", visivel: false, sessao: "sala-" + crypto.randomUUID() },
+  ouvintes: new Set(),
+};
+const avisar = () => loja.ouvintes.forEach((f) => f());
+
 const ESPERA = ["Consultando a sala…", "Cruzando funil, projetos e financeiro…", "Organizando a resposta…"];
 
 const STATUS = {
@@ -105,31 +114,43 @@ function Orb({ estado, nivelRef, size = 168 }) {
 
 /* ---------- conversa ---------- */
 function Conversa({ modo }) {
-  const [msgs, setMsgs] = useState([]);
+  const [, redesenhar] = useState(0);
+  const slot = loja[modo];
+  const msgs = slot.msgs || [];
+  const estado = slot.estado;
+  const setMsgs = (fn) => { slot.msgs = fn(slot.msgs || []); avisar(); };
+  const setEstado = (v) => { slot.estado = v; avisar(); };
   const [texto, setTexto] = useState("");
-  const [estado, setEstado] = useState("idle");
   const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState("");
   const [voz, setVoz] = useState(() => { try { return localStorage.getItem("astra:voz") === "1"; } catch { return false; } });
   const [espera, setEspera] = useState(0);
   const nivel = useRef(0);
-  const sessao = useRef("sala-" + crypto.randomUUID());
   const fim = useRef(null);
   const rec = useRef(null);
 
-  // histórico do modo dono vem do banco (a mesma conversa do WhatsApp)
   useEffect(() => {
-    setMsgs([]); setErro("");
-    if (modo !== "dono") return;
+    const f = () => redesenhar((n) => n + 1);
+    loja.ouvintes.add(f);
+    slot.visivel = true;
+    return () => { loja.ouvintes.delete(f); slot.visivel = false; };
+  }, [slot]);
+
+  // histórico do modo dono vem do banco (a mesma conversa do WhatsApp);
+  // se ainda há uma resposta a caminho, mantém o que está na tela
+  useEffect(() => {
+    setErro("");
+    if (modo !== "dono" || slot.estado === "pensando") return;
     (async () => {
       const { data: t } = await sb.from("astra_tenants").select("id").eq("slug", TENANT).maybeSingle();
       if (!t) return;
       const { data: c } = await sb.from("astra_contatos").select("id").eq("tenant_id", t.id).eq("canal", "interno").eq("externo_id", "dono").maybeSingle();
-      if (!c) return;
+      if (!c) { if (!slot.msgs) setMsgs(() => []); return; }
       const { data } = await sb.from("astra_mensagens").select("papel, conteudo, criado_em").eq("contato_id", c.id).order("criado_em", { ascending: false }).limit(30);
-      setMsgs((data || []).reverse().map((m) => ({ de: m.papel === "agente" ? "astra" : "eu", txt: m.conteudo })));
+      if (slot.estado === "pensando") return;
+      setMsgs(() => (data || []).reverse().map((m) => ({ de: m.papel === "agente" ? "astra" : "eu", txt: m.conteudo })));
     })();
-  }, [modo]);
+  }, [modo]); // eslint-disable-line react-hooks/exhaustive-deps
   // rola só a caixa da conversa (nunca a página inteira)
   useEffect(() => { const el = fim.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }, [msgs, estado]);
 
@@ -155,7 +176,7 @@ function Conversa({ modo }) {
     try {
       const body = modo === "dono"
         ? { modo: "dono", ...(audio ? { audio } : { mensagem: txt }) }
-        : { sessao: sessao.current, ...(audio ? { audio } : { mensagem: txt }) };
+        : { sessao: loja.cliente.sessao, ...(audio ? { audio } : { mensagem: txt }) };
       const d = await astra(body);
       if (d.transcricao) setMsgs((m) => [...m, { de: "eu", txt: "🎙 " + d.transcricao }]);
       setEstado("falando");
@@ -165,7 +186,7 @@ function Conversa({ modo }) {
         setMsgs((m) => [...m, { de: "astra", txt: partes[i], ensinou: i === partes.length - 1 ? d.ensinados : null, contato: d.contato }]);
       }
       if (!partes.length && d.handoff) setMsgs((m) => [...m, { de: "sis", txt: "Conversa passada para a equipe." }]);
-      if (voz && d.resposta) falar(d.resposta, () => setEstado("idle"));
+      if (voz && d.resposta && slot.visivel) falar(d.resposta, () => setEstado("idle"));
       else setTimeout(() => setEstado("idle"), 900);
     } catch (e) {
       setErro(e.message);
