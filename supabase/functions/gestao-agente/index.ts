@@ -460,6 +460,106 @@ function demoPara(nicho: string) {
   return { nome: "portfólio da Astrovia", url: SITE };
 }
 
+/* ============================================================
+   PERFIL DO NEGÓCIO — cada tipo de clínica/consultório tem um dia
+   a dia, um vocabulário e um jeito certo de puxar conversa
+   ============================================================ */
+type Perfil = { tipo: string; quem: string; vocabulario: string; dia_a_dia: string; ganchos: string[]; cuidado: string };
+const PERFIS: [RegExp, Perfil][] = [
+  [/odonto|dent|ortodon|implant/, {
+    tipo: "clínica odontológica / dentista", quem: "geralmente o próprio dentista dono ou a secretária",
+    vocabulario: "paciente, consulta, avaliação, retorno, manutenção do aparelho",
+    dia_a_dia: "muito retorno e manutenção de aparelho, faltas que deixam buraco na agenda, secretária presa no WhatsApp confirmando consulta",
+    ganchos: ["como fazem para lembrar o paciente do retorno/manutenção", "se as faltas atrapalham a agenda", "se o paciente consegue marcar avaliação fora do horário comercial"],
+    cuidado: "tom respeitoso de colega profissional; nada de prometer encher agenda",
+  }],
+  [/biom[eé]d|harmoniza|botox|preenchimento|injet/, {
+    tipo: "biomedicina estética / harmonização", quem: "a própria biomédica ou dentista dona, que atende e cuida do Instagram",
+    vocabulario: "paciente ou cliente, procedimento, avaliação, retoque, protocolo",
+    dia_a_dia: "muito pedido de orçamento no Direct e no WhatsApp, avaliações que viram procedimento, retoques com data certa",
+    ganchos: ["se a agenda de avaliações é toda pelo Direct/WhatsApp", "como controlam os retornos de retoque", "quanto tempo do dia vai respondendo mensagem em vez de atender"],
+    cuidado: "valorize o trabalho dela (ela é a marca); nunca fale de resultado estético",
+  }],
+  [/est[eé]t|depila|spa\b|sobrancelha|cilios|massag/, {
+    tipo: "clínica de estética", quem: "a dona, que muitas vezes também atende",
+    vocabulario: "cliente, sessão, pacote, procedimento, horário",
+    dia_a_dia: "pacotes de sessões para controlar, cliente remarcando em cima da hora, agenda de várias profissionais",
+    ganchos: ["como controlam as sessões de pacote de cada cliente", "se a cliente consegue remarcar sozinha", "se a agenda das profissionais fica toda no papel/WhatsApp"],
+    cuidado: "leve e simpático; nada de prometer resultado de tratamento",
+  }],
+  [/fisio|pilates|osteo|quiropra|rpg/, {
+    tipo: "fisioterapia / pilates", quem: "o fisioterapeuta dono",
+    vocabulario: "paciente ou aluno, sessão, evolução, plano de tratamento, reposição de aula",
+    dia_a_dia: "sessões recorrentes toda semana, reposição de falta, controle de pacote e convênio",
+    ganchos: ["como fazem a reposição quando o paciente falta", "se controlam as sessões do pacote no papel", "se os horários fixos da semana ficam numa planilha"],
+    cuidado: "tom de quem entende rotina de consultório; nada técnico de saúde",
+  }],
+  [/psic|terapia|terapeut/, {
+    tipo: "psicologia / terapia", quem: "o próprio psicólogo",
+    vocabulario: "paciente, sessão, horário fixo, atendimento online",
+    dia_a_dia: "horário fixo semanal, sessões online e presenciais, sigilo, desmarcações",
+    ganchos: ["se organiza os horários fixos e as sessões online no mesmo lugar", "como lida com as desmarcações em cima da hora"],
+    cuidado: "discreto e respeitoso; nunca fale de pacientes nem de saúde mental em detalhe",
+  }],
+  [/nutri/, {
+    tipo: "nutrição", quem: "o próprio nutricionista",
+    vocabulario: "paciente, consulta, retorno, acompanhamento",
+    dia_a_dia: "retornos mensais, acompanhamento por mensagem, consultas online",
+    ganchos: ["como lembra o paciente do retorno", "se os retornos se perdem no meio das mensagens"],
+    cuidado: "nada de dieta ou resultado; foco na rotina do consultório",
+  }],
+  [/m[eé]dic|consult[oó]rio|cl[ií]nica geral|dermato|pediatr|ginec|cardio|ortoped/, {
+    tipo: "consultório médico", quem: "a secretária ou o médico dono",
+    vocabulario: "paciente, consulta, retorno, convênio, particular",
+    dia_a_dia: "secretária sobrecarregada no telefone e WhatsApp, retorno com prazo, mistura de convênio e particular",
+    ganchos: ["se o paciente consegue marcar sozinho fora do horário da secretária", "como fazem a confirmação das consultas do dia seguinte"],
+    cuidado: "formal na medida certa; nunca prometa resultado nem fale de propaganda médica",
+  }],
+  [/vet|pet/, {
+    tipo: "veterinária / pet", quem: "o veterinário ou dono",
+    vocabulario: "tutor, pet, consulta, vacina, banho e tosa",
+    dia_a_dia: "vacinas com data, banho e tosa recorrente, tutor que esquece o retorno",
+    ganchos: ["como lembram o tutor da próxima vacina", "se o banho e tosa é marcado todo pelo WhatsApp"],
+    cuidado: "carinhoso com o pet, sem exagero",
+  }],
+  [/barb/, {
+    tipo: "barbearia", quem: "o barbeiro dono",
+    vocabulario: "cliente, corte, horário, cadeira",
+    dia_a_dia: "fila de mensagem no WhatsApp pra marcar, cliente que some sem avisar, vários barbeiros na mesma agenda",
+    ganchos: ["se o cliente consegue marcar sozinho de madrugada", "quanto tempo vai respondendo WhatsApp entre um corte e outro"],
+    cuidado: "descontraído, papo de barbearia, sem forçar gíria",
+  }],
+  [/sal[aã]o|cabel|unha|manicure/, {
+    tipo: "salão de beleza", quem: "a dona",
+    vocabulario: "cliente, horário, serviço, profissional",
+    dia_a_dia: "várias profissionais, serviços de durações diferentes, encaixes",
+    ganchos: ["como encaixam serviços de tempos diferentes na agenda", "se a cliente escolhe a profissional na hora de marcar"],
+    cuidado: "simpático e leve",
+  }],
+  [/oficina|mec[aâ]nic|moto|auto/, {
+    tipo: "oficina", quem: "o dono mecânico",
+    vocabulario: "cliente, carro/moto, serviço, orçamento, revisão",
+    dia_a_dia: "orçamento por WhatsApp, controle de serviço e peça, cliente perguntando se está pronto",
+    ganchos: ["como controlam os serviços e orçamentos em andamento", "se o cliente fica ligando pra saber se o carro tá pronto"],
+    cuidado: "direto e prático, sem enrolação",
+  }],
+];
+const PERFIL_GERAL: Perfil = {
+  tipo: "pequeno negócio", quem: "o dono", vocabulario: "cliente, horário, atendimento",
+  dia_a_dia: "agenda e atendimento pelo WhatsApp", ganchos: ["como organizam a agenda hoje"], cuidado: "respeitoso e direto",
+};
+function perfilDo(p: { nicho?: string | null; nome?: string; raw?: { tipo?: string } | null }) {
+  const alvo = semAcento(`${p.raw?.tipo || ""} ${p.nicho || ""} ${p.nome || ""}`);
+  return PERFIS.find(([re]) => re.test(alvo))?.[1] || PERFIL_GERAL;
+}
+// jeitos diferentes de abrir a conversa: sorteado por lead para as mensagens não saírem todas iguais
+const ABERTURAS = [
+  "PERGUNTA CURIOSA: abra com uma pergunta genuína sobre como funciona a rotina deles (use um dos ganchos do perfil).",
+  "ELOGIO ESPECÍFICO: abra com algo concreto e verdadeiro que os clientes/pacientes elogiam (dos pontos fortes do dossiê) e só depois faça a pergunta.",
+  "CENA DO DIA A DIA: descreva em uma frase uma situação comum desse tipo de negócio (ex.: paciente querendo marcar às 22h) e pergunte se acontece com eles.",
+  "DE VIZINHO: comece pela proximidade (\"sou de Curitiba também\", o bairro, se houver no endereço) e puxe a conversa pela rotina deles.",
+];
+
 async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string; substituir?: boolean }) {
   if (!b.prospect_id) throw new Falha("Informe o lead.");
   const canal = ["instagram", "whatsapp", "email"].includes(b.canal || "") ? b.canal! : "instagram";
@@ -506,9 +606,13 @@ async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; can
     ...(p.investigado_em ? {
       dono_provavel: p.dono && dz.dono_confianca !== "baixa" ? p.dono : null,
       dores_reais: dz.dores, gancho_sugerido: dz.gancho, diagnostico_site: dz.site_resumo,
+      pontos_fortes: dz.pontos_fortes, resumo_do_negocio: dz.resumo,
       momento_quente: p.quente ? p.quente_motivo : null,
     } : {}),
+    tipo_no_google: p.raw?.tipo || null, endereco: p.endereco,
   };
+  const perfil = perfilDo(p);
+  const abertura = ABERTURAS[Math.floor(Math.random() * ABERTURAS.length)];
 
   const prompt = `Você escreve mensagens de prospecção para a Astrovia Solutions, agência de tecnologia de Curitiba.
 
@@ -520,6 +624,16 @@ Demo mais relevante para este lead: ${demo.nome} — ${demo.url}
 
 DADOS REAIS DO LEAD (use somente estes, não invente nada)
 ${JSON.stringify(dados, null, 2)}
+
+QUEM É ESSE NEGÓCIO (analise antes de escrever)
+Tipo: ${perfil.tipo}. Quem costuma ler a mensagem: ${perfil.quem}.
+Vocabulário certo: ${perfil.vocabulario} (ex.: dentista fala em paciente; barbearia em cliente).
+Dia a dia típico: ${perfil.dia_a_dia}.
+Bons assuntos para puxar conversa: ${perfil.ganchos.join("; ")}.
+Cuidado: ${perfil.cuidado}.
+Antes de escrever, pense: o que esse negócio específico tem de particular (pelos dados acima)? Qual dor do dia a dia dele é mais provável? Use isso, não um texto genérico que serviria para qualquer empresa.
+Jeito de abrir ESTA mensagem: ${abertura}
+A "alternativa" deve usar OUTRO jeito de abrir, diferente do principal.
 
 TAREFA
 Canal: ${canal}. Tipo: ${tipo === "followup" ? "follow-up de quem ainda não respondeu" : "primeiro contato"}.
