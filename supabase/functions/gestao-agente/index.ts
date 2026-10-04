@@ -1170,7 +1170,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
 
   const log: string[] = Array.isArray(reg.detalhes?.log) ? reg.detalhes.log : [];
   const anotar = (m: string) => { log.push(`${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" }).slice(0, 5)} ${m}`); console.log("rotina:", m); };
-  let garimpos = reg.garimpos || 0, erro: string | null = null;
+  let garimpos = reg.garimpos || 0, erro: string | null = null, semLeads = false;
 
   const contar = async (tipo: string) => {
     const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", tipo).gte("criado_em", desde);
@@ -1213,7 +1213,8 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
 
       if (!c) {
         // acabaram os bons: garimpa o próximo nicho da fila (muda a cada dia)
-        if (garimpos >= r.garimpos_dia || passou() > 60) break;
+        if (garimpos >= r.garimpos_dia) { semLeads = true; break; }
+        if (passou() > 60) break;
         const busca = nichos[(doAno + garimpos) % nichos.length];
         garimpos++;
         await sb.from("astra_rotinas").update({ garimpos }).eq("dia", dia);
@@ -1256,7 +1257,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
     const h = horaBR(), oi = h < 12 ? "Bom dia!" : h < 18 ? "Boa tarde!" : "Boa noite!";
     const nomes = [...new Set((hoje || []).map((x: any) => x.gestao_prospects?.nome).filter(Boolean))].slice(0, 3);
     await avisarDono(sb, leads || followups
-      ? `${oi} A rotina de hoje deixou ${leads} ${leads === 1 ? "lead novo" : "leads novos"} com mensagem${followups ? ` e ${followups} follow-up${followups > 1 ? "s" : ""}` : ""} em Aprovar envios.${nomes.length ? ` Entre eles: ${nomes.join(", ")}.` : ""} Nada foi enviado: é só revisar e aprovar.${concluida ? "" : ` Fiquei abaixo da meta de ${r.meta}: ${erro ? "deu um erro no caminho" : "faltaram leads bons no perfil"}.`}`
+      ? `${oi} A rotina de hoje deixou ${leads} ${leads === 1 ? "lead novo" : "leads novos"} com mensagem${followups ? ` e ${followups} follow-up${followups > 1 ? "s" : ""}` : ""} em Aprovar envios.${nomes.length ? ` Entre eles: ${nomes.join(", ")}.` : ""} Nada foi enviado: é só revisar e aprovar.${concluida ? "" : ` Fiquei abaixo da meta de ${r.meta}: ${erro ? "deu um erro no caminho" : semLeads ? "faltaram leads bons no perfil" : "o tempo da rodada acabou antes; se quiser, peça para eu rodar de novo"}.`}`
       : `${oi} Rodei a prospecção de hoje, mas não encontrei leads bons o suficiente para a meta de ${r.meta}.${erro ? " Deu um erro no caminho; vale olhar o painel de resultados." : " Posso testar outro nicho ou bairro se você quiser."}`);
     avisado = true;
   }

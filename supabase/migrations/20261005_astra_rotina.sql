@@ -84,4 +84,4 @@ grant execute on function public.astra_disparar_rotina() to service_role;
 -- (garimpar, investigar, escrever) até chegar na meta do dia; depois as rodadas só conferem e saem.
 select cron.unschedule(jobid) from cron.job where jobname in ('astra-rotina-diaria', 'astra-limpeza');
 select cron.schedule('astra-rotina-diaria', '*/5 9-11 * * *', $$select public.astra_disparar_rotina()$$);
-select cron.schedule('astra-limpeza', '17 6 * * *', $$select public.astra_limpar_processadas(); delete from net._http_response where created < now() - interval '3 days'$$);
+select cron.schedule('astra-limpeza', '17 6 * * *', $$select public.astra_limpar_processadas()$$); -- o pg_net limpa as próprias respostas
