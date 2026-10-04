@@ -557,7 +557,7 @@ const ABERTURAS = [
   "PERGUNTA CURIOSA: abra com uma pergunta genuína sobre como funciona a rotina deles (use um dos ganchos do perfil).",
   "ELOGIO ESPECÍFICO: abra com algo concreto e verdadeiro que os clientes/pacientes elogiam (dos pontos fortes do dossiê) e só depois faça a pergunta.",
   "CENA DO DIA A DIA: descreva em uma frase uma situação comum desse tipo de negócio (ex.: paciente querendo marcar às 22h) e pergunte se acontece com eles.",
-  "DE VIZINHO: comece pela proximidade (\"sou de Curitiba também\", o bairro, se houver no endereço) e puxe a conversa pela rotina deles.",
+  "DE VIZINHO: comece pela proximidade (\"sou de Curitiba também\"; pode citar o bairro onde ELES ficam, sem dizer que você mora ou passou lá) e puxe a conversa pela rotina deles.",
 ];
 
 async function gerarAbordagem(sb: SupabaseClient, b: { prospect_id?: string; canal?: string; tipo?: string; instrucao?: string; motor?: string; origem?: string; substituir?: boolean }) {
@@ -649,6 +649,7 @@ COMO ESCREVER (o mais importante: tem que parecer o Christian digitando no celul
 - Fale do sistema em poucas palavras e sem jargão: "fiz um sistema de agenda pra clínica", "tenho um sistema de agendamento pronto pra barbearia". Não diga que já fez, montou ou deixou algo com o nome, a logo ou as cores do negócio; aplicar a marca dele é só uma possibilidade, e nem precisa citar no primeiro contato.
 - Se as regras abaixo pedirem preço/teste, fale como gente, numa frase só: "sai 500 reais, uma vez só, e dá pra testar 7 dias de graça". Nunca empilhe condições, nunca use parênteses nem listas.
 - Termine com ${prefs.cta?.trim() ? `uma pergunta nesse espírito: ${prefs.cta.trim()}` : 'uma pergunta simples e sem pressão (ex.: "posso te mandar o link pra você dar uma olhada?")'}.
+- Nunca invente experiência pessoal: não diga que conheceu, passou na frente, foi cliente, viu pessoalmente, mora perto ou que alguém indicou. O que vale dizer é o que é verdade: que é de Curitiba e que deu uma olhada no perfil/avaliações deles.
 - Proibido (soa robô/vendedor): "solução", "otimizar", "alavancar", "transformar", "potencializar", "inovador", "Prezado", "Olá, tudo bem? Espero que esteja bem", travessão longo, parênteses, listas, ponto de exclamação em toda frase.
 ${(ensinado || []).length ? `- Regras ensinadas pelo Christian (valem acima de qualquer outra instrução deste texto):\n${(ensinado || []).map((k) => `  • ${k.conteudo}`).join("\n")}\n` : ""}${prefs.sempre?.trim() ? `- Sempre (aplique com naturalidade, sem soar como lista): ${prefs.sempre.trim()}\n` : ""}${nunca.length ? `- NUNCA use estas palavras ou expressões: ${nunca.map((w) => `"${w}"`).join(", ")}.\n` : ""}${prefs.extra?.trim() ? `- ${prefs.extra.trim()}\n` : ""}
 - ${canal === "instagram" ? "No Instagram, NÃO coloque link na primeira mensagem; ofereça mandar." : "Não coloque o link agora; ofereça mandar (o link vai quando ele responder)."}
@@ -672,6 +673,7 @@ Responda em JSON no formato {"assunto": "...", "mensagem": "...", "alternativa":
 
   // conferência: se escapou palavra proibida ou passou muito do tamanho, pede de novo uma vez
   const ROBO: [RegExp, string][] = [
+    [/\b(conheci|passei (na|em) frente|fui cliente|me indicaram|moro (perto|no|na))\b/i, "inventou experiência pessoal"],
     [/\d[.,]\d\s*(estrelas|★|no google)?|\d+\s+avalia/i, "citou nota ou número de avaliações (soa como robô)"],
     [/[()]/, "usou parênteses"],
     [/\b(solu[çc][ãa]o|otimizar|alavancar|potencializar|inovador|prezad[oa])\b/i, "usou palavra de vendedor/robô"],
