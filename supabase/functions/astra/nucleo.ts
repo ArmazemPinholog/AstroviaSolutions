@@ -201,7 +201,11 @@ export async function atender(e: Entrada) {
   const ensinado = await aprendizados(t.id);
   let resposta = "", chamouEquipe = false;
   for (let rodada = 0; rodada < 5; rodada++) {
-    const content = await conversar(instrucoes(t, c, ensinado), contents, ferramentas);
+    const content = await conversar(instrucoes(t, c, ensinado), contents, ferramentas, 0.6, {
+      motor: t.config?.motor?.cliente,
+      modelo: t.config?.motor?.modelo_cliente,
+      pensar: "rapido",
+    });
     contents.push(content);
     const chamadas = content.parts.filter((p: any) => p.functionCall);
     const textos = content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();

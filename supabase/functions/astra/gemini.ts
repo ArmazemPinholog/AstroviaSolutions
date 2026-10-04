@@ -1,10 +1,25 @@
+// Motores de IA da Astra: Gemini (padrão, gratuito) e Claude (opcional, via API da Anthropic).
+// As conversas circulam sempre no formato do Gemini ({ role: "user"|"model", parts }) e o
+// adaptador converte para o Claude quando ele é o motor escolhido. Se o Claude falhar
+// (sem chave, sem crédito, fora do ar), a Astra volta sozinha para o Gemini.
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 const KEY = () => Deno.env.get("GEMINI_API_KEY") ?? "";
 const MODELO = () => Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+const CLAUDE_KEY = () => Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
-async function chamar(body: unknown) {
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELO()}:generateContent`, {
+export type Motor = { motor?: "gemini" | "claude"; modelo?: string; pensar?: "rapido" | "normal" };
+
+/** o modelo do Gemini aceita orçamento de raciocínio? (família 2.5) */
+const aceitaOrcamento = (m: string) => /2\.5/.test(m);
+
+async function chamarGemini(body: Record<string, unknown>, pensar: "rapido" | "normal" = "normal") {
+  const modelo = MODELO();
+  const gc = (body.generationConfig ?? {}) as Record<string, unknown>;
+  // pensar menos = responder mais rápido; o atendimento ao cliente não precisa de raciocínio longo
+  if (aceitaOrcamento(modelo)) gc.thinkingConfig = { thinkingBudget: pensar === "rapido" ? (/pro/.test(modelo) ? 128 : 0) : 1024 };
+  body.generationConfig = gc;
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": KEY() },
     body: JSON.stringify(body),
@@ -16,29 +31,93 @@ async function chamar(body: unknown) {
   return content;
 }
 
-/** conversa com ferramentas; devolve o conteúdo do modelo como veio (preserva assinaturas de raciocínio) */
-export function conversar(system: string, contents: unknown[], tools: unknown[], temperatura = 0.6) {
-  return chamar({
+// ---------- adaptador Claude ----------
+function paraClaude(contents: any[]) {
+  const msgs: { role: "user" | "assistant"; content: any[] }[] = [];
+  let ids: string[] = [];
+  contents.forEach((c, i) => {
+    const role = c.role === "model" ? "assistant" : "user";
+    const blocos: any[] = [];
+    let j = 0;
+    for (const p of c.parts ?? []) {
+      if (p.thought) continue;
+      if (p.text) blocos.push({ type: "text", text: p.text });
+      else if (p.functionCall) {
+        const id = p.functionCall.id ?? `t${i}_${j++}`;
+        p.functionCall.id = id;
+        blocos.push({ type: "tool_use", id, name: p.functionCall.name, input: p.functionCall.args ?? {} });
+      } else if (p.functionResponse) {
+        const id = ids.shift() ?? `t${i}_${j++}`;
+        blocos.push({ type: "tool_result", tool_use_id: id, content: JSON.stringify(p.functionResponse.response ?? {}) });
+      }
+    }
+    if (role === "assistant") ids = blocos.filter((b) => b.type === "tool_use").map((b) => b.id);
+    if (!blocos.length) return;
+    const ult = msgs.at(-1);
+    if (ult && ult.role === role) ult.content.push(...blocos);
+    else msgs.push({ role, content: blocos });
+  });
+  while (msgs.length && msgs[0].role !== "user") msgs.shift();
+  return msgs;
+}
+
+async function chamarClaude(system: string, contents: any[], tools: any[], temperatura: number, modelo: string) {
+  const declaracoes = (tools?.[0]?.functionDeclarations ?? []).map((f: any) => ({
+    name: f.name,
+    description: f.description,
+    input_schema: f.parameters ?? { type: "object", properties: {} },
+  }));
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": CLAUDE_KEY(), "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: modelo,
+      max_tokens: 2048,
+      temperature: temperatura,
+      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+      messages: paraClaude(contents),
+      ...(declaracoes.length ? { tools: declaracoes } : {}),
+    }),
+  });
+  if (!r.ok) throw new Error(`claude ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const d = await r.json();
+  const parts = (d.content ?? []).map((b: any) =>
+    b.type === "tool_use" ? { functionCall: { id: b.id, name: b.name, args: b.input ?? {} } } : b.type === "text" ? { text: b.text } : null
+  ).filter(Boolean);
+  if (!parts.length) throw new Error("claude sem resposta");
+  return { role: "model", parts };
+}
+
+/** conversa com ferramentas no motor escolhido; devolve sempre no formato do Gemini */
+export async function conversar(system: string, contents: unknown[], tools: unknown[], temperatura = 0.6, m: Motor = {}) {
+  if (m.motor === "claude" && CLAUDE_KEY()) {
+    try {
+      return await chamarClaude(system, contents as any[], tools as any[], temperatura, m.modelo || "claude-haiku-4-5-20251001");
+    } catch (e) {
+      console.error("claude falhou, usando gemini:", String(e).slice(0, 200));
+    }
+  }
+  return chamarGemini({
     systemInstruction: { parts: [{ text: system }] },
     contents,
     tools,
     generationConfig: { temperature: temperatura, maxOutputTokens: 4096 },
-  });
+  }, m.pensar);
 }
 
 /** geração simples de texto (usada pelo simulador e por tarefas internas) */
 export async function gerar(system: string, prompt: string, temperatura = 0.8) {
-  const content = await chamar({
+  const content = await chamarGemini({
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: { temperature: temperatura, maxOutputTokens: 4096 },
-  });
+  }, "rapido");
   return content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();
 }
 
-/** transcreve um áudio do cliente (o Gemini entende áudio direto) */
+/** transcreve um áudio (o Gemini entende áudio direto) */
 export async function transcrever(bytes: Uint8Array, mime: string) {
-  const content = await chamar({
+  const content = await chamarGemini({
     contents: [{
       role: "user",
       parts: [
@@ -49,7 +128,7 @@ export async function transcrever(bytes: Uint8Array, mime: string) {
         },
       ],
     }],
-    generationConfig: { temperature: 0, maxOutputTokens: 4096 },
-  });
+    generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+  }, "rapido");
   return content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();
 }

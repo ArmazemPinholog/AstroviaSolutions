@@ -65,6 +65,12 @@ const ferramentasBase = [
     parameters: { type: "object", properties: { id: { type: "string" }, aplicar: { type: "boolean" } }, required: ["id", "aplicar"] },
   },
   {
+    name: "revisar_atendimentos",
+    description:
+      "Traz as conversas recentes com clientes (resumo, status, pontuação e as últimas mensagens de cada uma), as perguntas sem resposta e as correções da equipe. Use para avaliar a qualidade do atendimento e sugerir melhorias em você mesma, nos preços, na oferta ou no processo.",
+    parameters: { type: "object", properties: { quantidade: { type: "integer", description: "Quantas conversas (padrão 10, máx. 20)" } } },
+  },
+  {
     name: "devolver_para_ia",
     description: "Devolve para a IA uma conversa que estava com a equipe humana.",
     parameters: { type: "object", properties: { contato_id: { type: "string" } }, required: ["contato_id"] },
@@ -187,6 +193,22 @@ async function executar(t: any, nome: string, a: any, ctx: Ctx) {
       }
       return { ok: true };
     }
+    case "revisar_atendimentos": {
+      const qtd = Math.min(Math.max(Number(a.quantidade) || 10, 1), 20);
+      const { data: cs } = await sb.from("astra_contatos").select("id, nome, canal, origem, status, pontuacao, segmento, resumo, handoff, handoff_motivo")
+        .eq("tenant_id", t.id).neq("canal", "interno").order("atualizado_em", { ascending: false }).limit(qtd);
+      const conversas = await Promise.all((cs ?? []).map(async (c) => {
+        const { data: ms } = await sb.from("astra_mensagens").select("papel, conteudo").eq("contato_id", c.id).order("criado_em", { ascending: false }).limit(
+          10,
+        );
+        return { ...c, mensagens: (ms ?? []).reverse().map((x) => `${x.papel}: ${x.conteudo.slice(0, 400)}`) };
+      }));
+      const [{ data: lac }, { data: fb }] = await Promise.all([
+        sb.from("astra_lacunas").select("pergunta").eq("tenant_id", t.id).eq("status", "pendente").limit(15),
+        sb.from("astra_feedbacks").select("resposta_ia, avaliacao, correcao").eq("tenant_id", t.id).order("criado_em", { ascending: false }).limit(15),
+      ]);
+      return { conversas, perguntas_sem_resposta: lac ?? [], correcoes_da_equipe: fb ?? [] };
+    }
     case "devolver_para_ia": {
       const id = uuid(a.contato_id);
       if (!id) return { erro: "id inválido" };
@@ -213,7 +235,7 @@ export async function mestre(tenantSlug: string, texto: string, ctx: Ctx) {
   }
   await sb.from("astra_mensagens").insert({ tenant_id: t.id, contato_id: c!.id, papel: "equipe", conteudo: limpar(texto) });
 
-  const { data: hist } = await sb.from("astra_mensagens").select("papel, conteudo").eq("contato_id", c!.id).order("criado_em", { ascending: false }).limit(30);
+  const { data: hist } = await sb.from("astra_mensagens").select("papel, conteudo").eq("contato_id", c!.id).order("criado_em", { ascending: false }).limit(20);
   const contents: any[] = (hist ?? []).reverse().map((m) => ({ role: m.papel === "agente" ? "model" : "user", parts: [{ text: m.conteudo }] }));
   while (contents.length && contents[0].role !== "user") contents.shift();
 
@@ -233,6 +255,8 @@ Seu papel: ser o braço direito dele, como uma funcionária exemplar e leal. Rel
 - Quando ele ensinar algo, corrigir um comportamento ou mudar uma regra/preço: reescreva como instrução clara e chame ensinar. Confirme em uma frase o que gravou.
 - Antes de esquecer um aprendizado, confirme qual é. Nunca apague dados de clientes.
 - Se ele pedir algo que você não consegue fazer pelas ferramentas, diga com clareza.
+- Seja proativa como uma funcionária de confiança: em relatórios e balanços, termine com UMA sugestão concreta de melhoria (no negócio, no processo de vendas ou em você mesma), dizendo o porquê. Quando ele pedir avaliação do atendimento, use revisar_atendimentos e aponte o que mudar na sua base, no tom ou na oferta, propondo o texto exato para ele aprovar.
+- Escreva para ser lida em voz alta também: frases curtas, sem tabelas, sem markdown, números por extenso quando forem poucos.
 Data e hora: ${
     new Intl.DateTimeFormat("pt-BR", { timeZone: t.config?.agenda?.fuso ?? "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" }).format(new Date())
   }.
@@ -249,25 +273,31 @@ ${await aprendizados(t.id) || "(nenhum ainda)"}
   let resposta = "";
   const acoes: string[] = [], ensinados: string[] = [];
   for (let rodada = 0; rodada < 6; rodada++) {
-    const content = await conversar(system, contents, ferramentas, 0.4);
+    const content = await conversar(system, contents, ferramentas, 0.4, {
+      motor: t.config?.motor?.dono,
+      modelo: t.config?.motor?.modelo_dono,
+      pensar: "normal",
+    });
     contents.push(content);
     const chamadas = content.parts.filter((p: any) => p.functionCall);
     const textos = content.parts.filter((p: any) => p.text && !p.thought).map((p: any) => p.text).join("").trim();
     if (textos) resposta = textos;
     if (!chamadas.length) break;
-    const respostas = [];
-    for (const p of chamadas.slice(0, 5)) {
-      let r: unknown;
-      acoes.push(p.functionCall.name);
-      try {
-        r = await executar(t, p.functionCall.name, p.functionCall.args ?? {}, ctx);
-        if (p.functionCall.name === "ensinar" && (r as any)?.ok) ensinados.push(limpar(p.functionCall.args?.conteudo, 300));
-      } catch (e) {
-        console.error("mestre", p.functionCall.name, e);
-        r = { erro: "falha interna" };
-      }
-      respostas.push({ functionResponse: { name: p.functionCall.name, response: r } });
-    }
+    // ferramentas da mesma rodada rodam em paralelo (respostas mais rápidas)
+    const respostas = await Promise.all(
+      chamadas.slice(0, 5).map(async (p: any) => {
+        let r: unknown;
+        acoes.push(p.functionCall.name);
+        try {
+          r = await executar(t, p.functionCall.name, p.functionCall.args ?? {}, ctx);
+          if (p.functionCall.name === "ensinar" && (r as any)?.ok) ensinados.push(limpar(p.functionCall.args?.conteudo, 300));
+        } catch (e) {
+          console.error("mestre", p.functionCall.name, e);
+          r = { erro: "falha interna" };
+        }
+        return { functionResponse: { name: p.functionCall.name, response: r } };
+      }),
+    );
     contents.push({ role: "user", parts: respostas });
   }
   resposta = (resposta || "Pronto.").slice(0, 3000);

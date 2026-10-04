@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles } from "lucide-react";
+import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu } from "lucide-react";
 import { sb } from "../supabase";
 import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, fmtDate } from "../ui";
 
@@ -30,8 +30,27 @@ const ATALHOS = [
   "Bom dia, Astra. Como estamos hoje?",
   "O que está atrasado e o que eu faço primeiro?",
   "Quais perguntas você não soube responder?",
+  "Avalie seus atendimentos e me diga o que melhorar.",
   "Liste o que você aprendeu até agora.",
 ];
+
+/* voz: lê a resposta em português (voz do próprio navegador) */
+function falar(texto, aoTerminar) {
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth) return aoTerminar();
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(texto.replace(/[*_#`>]/g, ""));
+    u.lang = "pt-BR";
+    u.rate = 1.05;
+    const voz = synth.getVoices().find((v) => /pt-BR/i.test(v.lang) && /google|luciana|francisca|natural/i.test(v.name)) || synth.getVoices().find((v) => /pt/i.test(v.lang));
+    if (voz) u.voice = voz;
+    u.onend = u.onerror = aoTerminar;
+    synth.speak(u);
+  } catch { aoTerminar(); }
+}
+
+const ESPERA = ["Consultando a sala…", "Cruzando funil, projetos e financeiro…", "Organizando a resposta…"];
 
 const STATUS = {
   em_conversa: ["Em conversa", "#60a5fa"], qualificado: ["Qualificado", "#22d3ee"], reuniao: ["Reunião", "#34d399"],
@@ -91,6 +110,8 @@ function Conversa({ modo }) {
   const [estado, setEstado] = useState("idle");
   const [gravando, setGravando] = useState(false);
   const [erro, setErro] = useState("");
+  const [voz, setVoz] = useState(() => { try { return localStorage.getItem("astra:voz") === "1"; } catch { return false; } });
+  const [espera, setEspera] = useState(0);
   const nivel = useRef(0);
   const sessao = useRef("sala-" + crypto.randomUUID());
   const fim = useRef(null);
@@ -109,7 +130,22 @@ function Conversa({ modo }) {
       setMsgs((data || []).reverse().map((m) => ({ de: m.papel === "agente" ? "astra" : "eu", txt: m.conteudo })));
     })();
   }, [modo]);
-  useEffect(() => { fim.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs, estado]);
+  // rola só a caixa da conversa (nunca a página inteira)
+  useEffect(() => { const el = fim.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }, [msgs, estado]);
+
+  useEffect(() => {
+    if (estado !== "pensando") return;
+    setEspera(0);
+    const id = setInterval(() => setEspera((n) => Math.min(n + 1, ESPERA.length - 1)), 4000);
+    return () => clearInterval(id);
+  }, [estado]);
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
+  const alternarVoz = () => {
+    const v = !voz;
+    setVoz(v);
+    if (!v) window.speechSynthesis?.cancel();
+    try { localStorage.setItem("astra:voz", v ? "1" : "0"); } catch { /* sem storage */ }
+  };
 
   const enviar = async (txt, audio) => {
     if (estado === "pensando") return;
@@ -129,10 +165,11 @@ function Conversa({ modo }) {
         setMsgs((m) => [...m, { de: "astra", txt: partes[i], ensinou: i === partes.length - 1 ? d.ensinados : null, contato: d.contato }]);
       }
       if (!partes.length && d.handoff) setMsgs((m) => [...m, { de: "sis", txt: "Conversa passada para a equipe." }]);
+      if (voz && d.resposta) falar(d.resposta, () => setEstado("idle"));
+      else setTimeout(() => setEstado("idle"), 900);
     } catch (e) {
       setErro(e.message);
-    } finally {
-      setTimeout(() => setEstado("idle"), 900);
+      setEstado("idle");
     }
   };
 
@@ -169,10 +206,10 @@ function Conversa({ modo }) {
   const rotulo = { idle: "em espera", ouvindo: "ouvindo", pensando: "pensando", falando: "respondendo" }[estado];
 
   return (
-    <Card className="flex min-h-[620px] flex-col overflow-hidden">
+    <Card className="flex h-[min(80vh,780px)] min-h-[520px] flex-col overflow-hidden">
       <div className="flex items-center gap-4 border-b border-white/[0.06] p-4">
         <Orb estado={estado} nivelRef={nivel} size={92} />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-display text-2xl font-semibold tracking-[0.14em]">
             <span className="bg-gradient-to-r from-[#22d3ee] to-[#ff2fd0] bg-clip-text text-transparent">ASTRA</span>
           </p>
@@ -181,9 +218,12 @@ function Conversa({ modo }) {
             <span className="h-1.5 w-1.5 rounded-full bg-[#22d3ee] shadow-[0_0_8px_#22d3ee]" /> {rotulo}
           </p>
         </div>
+        <Btn size="sm" variant={voz ? "neon" : "ghost"} onClick={alternarVoz} aria-pressed={voz} title="Ouvir as respostas em voz">
+          {voz ? <Volume2 size={14} /> : <VolumeX size={14} />} {voz ? "Voz ligada" : "Voz"}
+        </Btn>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite">
+      <div ref={fim} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4" aria-live="polite">
         {!msgs.length && (
           <p className="pt-6 text-center text-sm text-titanium">
             {modo === "dono" ? "Comece com um dos atalhos abaixo, ou fale pelo microfone." : "Escreva como um cliente escreveria, por exemplo: \"Oi, tenho uma barbearia e quero organizar a agenda\"."}
@@ -215,8 +255,7 @@ function Conversa({ modo }) {
             )}
           </div>
         ))}
-        {estado === "pensando" && <p className="animate-pulse font-mono text-[0.62rem] uppercase tracking-[0.2em] text-titanium">Astra está pensando…</p>}
-        <div ref={fim} />
+        {estado === "pensando" && <p className="animate-pulse font-mono text-[0.62rem] uppercase tracking-[0.2em] text-titanium">{modo === "dono" ? ESPERA[espera] : "Astra está digitando…"}</p>}
       </div>
 
       <div className="border-t border-white/[0.06] p-4">
@@ -378,6 +417,10 @@ function Ajustes({ tenant, onSalvo }) {
   const [agenda, setAgenda] = useState(() => ({ fuso: "America/Sao_Paulo", inicio: "09:00", fim: "20:00", duracao_min: 30, ...(tenant?.config?.agenda || {}) }));
   const [texto, setTexto] = useState(() => ({ persona: tenant?.persona || "", base: tenant?.base_conhecimento || "", ativo: tenant?.ativo ?? true }));
   const [meuWhats, setMeuWhats] = useState(me?.whatsapp || "");
+  const [motor, setMotor] = useState(() => {
+    const m = tenant?.config?.motor || {};
+    return { dono: m.dono === "claude" ? (m.modelo_dono || "claude-sonnet-5-5") : "gemini", cliente: m.cliente === "claude" ? (m.modelo_cliente || "claude-haiku-4-5-20251001") : "gemini" };
+  });
   const [msg, setMsg] = useState("");
 
   const salvar = async () => {
@@ -389,6 +432,10 @@ function Ajustes({ tenant, onSalvo }) {
       whatsapp_phone_id: (cfg.whatsapp_phone_id || "").replace(/\D/g, "") || undefined,
       limite_respostas_dia: Number(cfg.limite_respostas_dia) || undefined,
       agenda: { ...agenda, duracao_min: Number(agenda.duracao_min) || 30 },
+      motor: {
+        dono: motor.dono === "gemini" ? "gemini" : "claude", modelo_dono: motor.dono === "gemini" ? undefined : motor.dono,
+        cliente: motor.cliente === "gemini" ? "gemini" : "claude", modelo_cliente: motor.cliente === "gemini" ? undefined : motor.cliente,
+      },
     };
     const { error } = await sb.from("astra_tenants").update({ config, persona: texto.persona, base_conhecimento: texto.base, ativo: texto.ativo }).eq("id", tenant.id);
     setMsg(error ? error.message : "Ajustes salvos ✓");
@@ -425,6 +472,18 @@ function Ajustes({ tenant, onSalvo }) {
             <label className="flex items-center gap-2 text-sm text-titanium-bright sm:col-span-2">
               <input type="checkbox" checked={texto.ativo} onChange={(e) => setTexto({ ...texto, ativo: e.target.checked })} /> Astra atendendo clientes
             </label>
+          </Card>
+          <Card className="grid gap-4 p-4 sm:grid-cols-2">
+            <p className="flex items-center gap-2 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee] sm:col-span-2"><Cpu size={12} /> Cérebro</p>
+            <Field label="Conversando com você" hint="Sonnet é o mais inteligente; Haiku é rápido e barato.">
+              <Select value={motor.dono} onChange={(e) => setMotor({ ...motor, dono: e.target.value })}
+                options={[{ value: "gemini", label: "Gemini (grátis)" }, { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }]} />
+            </Field>
+            <Field label="Atendendo clientes" hint="Atendimento pede rapidez: Gemini ou Haiku.">
+              <Select value={motor.cliente} onChange={(e) => setMotor({ ...motor, cliente: e.target.value })}
+                options={[{ value: "gemini", label: "Gemini (grátis)" }, { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }, { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" }]} />
+            </Field>
+            <p className="text-xs leading-relaxed text-titanium sm:col-span-2">O Claude usa a API da Anthropic, cobrada à parte e separada da assinatura Pro, então não mexe na sua cota de programação. Precisa do secret <span className="font-mono text-titanium-bright">ANTHROPIC_API_KEY</span> no Supabase. Sem ele, ou se faltar crédito, a Astra volta sozinha para o Gemini.</p>
           </Card>
           <Card className="grid gap-4 p-4 sm:grid-cols-4">
             <p className="font-mono text-[0.6rem] uppercase tracking-[0.2em] text-[#22d3ee] sm:col-span-4">Agenda para calls</p>
