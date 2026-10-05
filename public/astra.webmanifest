@@ -1,0 +1,14 @@
+{
+  "name": "Astra · Astrovia",
+  "short_name": "Astra",
+  "description": "A assistente de vendas da Astrovia",
+  "start_url": "/gestao/astra",
+  "scope": "/gestao",
+  "display": "standalone",
+  "background_color": "#030305",
+  "theme_color": "#030305",
+  "icons": [
+    { "src": "/astra-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/astra-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

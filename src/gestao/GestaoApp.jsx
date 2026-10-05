@@ -156,6 +156,8 @@ function App({ session, status }) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
   const [page, setPage] = useState(() => {
+    // /gestao/astra (o app da Astra no celular) abre direto nela
+    if (/^\/gestao\/astra\/?$/.test(window.location.pathname)) return "astra";
     try { return localStorage.getItem("gestao:aba") || "painel"; } catch { return "painel"; }
   });
   const [menu, setMenu] = useState(false);

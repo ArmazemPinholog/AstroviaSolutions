@@ -998,6 +998,34 @@ export function AstraFlutuante() {
   const [grande, setGrande] = useState(() => { try { return localStorage.getItem("astra:grande") === "1"; } catch { return false; } });
   const nivel = useRef(0);
   const estado = loja.dono.estado;
+  // a esfera pode ser arrastada para não ficar em cima de botões; a posição fica salva
+  const [pos, setPos] = useState(() => { try { return JSON.parse(localStorage.getItem("astra:pos")) || null; } catch { return null; } });
+  const arraste = useRef(null);
+  const noLimite = (x, y) => ({ x: Math.min(Math.max(8, x), window.innerWidth - 88), y: Math.min(Math.max(8, y), window.innerHeight - 88) });
+  useEffect(() => {
+    const ajustar = () => setPos((p) => (p ? noLimite(p.x, p.y) : p));
+    window.addEventListener("resize", ajustar);
+    return () => window.removeEventListener("resize", ajustar);
+  }, []);
+  const pegar = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    arraste.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moveu: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const mover = (e) => {
+    const a = arraste.current;
+    if (!a) return;
+    if (!a.moveu && Math.hypot(e.clientX - a.x0, e.clientY - a.y0) < 8) return;
+    a.moveu = true;
+    setPos(noLimite(e.clientX - a.dx, e.clientY - a.dy));
+  };
+  const soltar = () => {
+    const a = arraste.current;
+    arraste.current = null;
+    if (!a) return;
+    if (!a.moveu) { setAberta(true); return; }
+    setPos((p) => { try { localStorage.setItem("astra:pos", JSON.stringify(p)); } catch { /* sem storage */ } return p; });
+  };
   const alternarGrande = () => setGrande((v) => { try { localStorage.setItem("astra:grande", v ? "0" : "1"); } catch { /* sem storage */ } return !v; });
   const tamanho = grande
     ? "sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-[min(900px,90dvh)] sm:w-[min(1000px,calc(100vw-3rem))]"
@@ -1016,8 +1044,11 @@ export function AstraFlutuante() {
         </div>
       )}
       {/* a própria Astra (esfera viva) em vez de um ícone; some no celular com ela aberta para não cobrir o campo */}
-      <button onClick={() => setAberta((v) => !v)} aria-label="Falar com a Astra" title={estado === "pensando" ? "Astra pensando…" : "Falar com a Astra"}
-        className={`${aberta ? "hidden" : "grid"} fixed bottom-4 right-4 z-50 h-20 w-20 place-items-center rounded-full border border-white/10 bg-[#030305]/90 shadow-[0_0_32px_rgba(34,211,238,0.35)] backdrop-blur transition hover:scale-105`}>
+      <button onPointerDown={pegar} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => { arraste.current = null; }}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setAberta(true))}
+        aria-label="Falar com a Astra (arraste para mudar de lugar)" title={estado === "pensando" ? "Astra pensando…" : "Falar com a Astra · arraste para mover"}
+        style={pos ? { left: pos.x, top: pos.y } : undefined}
+        className={`${aberta ? "hidden" : "grid"} fixed z-50 h-20 w-20 touch-none select-none place-items-center rounded-full border border-white/10 bg-[#030305]/90 shadow-[0_0_32px_rgba(34,211,238,0.35)] backdrop-blur ${pos ? "" : "bottom-4 right-4"}`}>
         <Orb estado={estado} nivelRef={nivel} size={76} />
       </button>
     </>
