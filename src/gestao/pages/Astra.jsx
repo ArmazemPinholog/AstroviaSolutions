@@ -624,21 +624,28 @@ function Aprovar() {
   // a rotina e a Astra podem criar rascunhos a qualquer momento
   useEffect(() => { const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
 
-  // 1º clique abre o WhatsApp/Instagram e já pergunta como foi: o lead só muda de situação pela sua classificação
-  const [classif, setClassif] = useState(null); // { a, via }
+  // a classificação fica no próprio card (no celular, voltar do WhatsApp pode recarregar a página e perder qualquer janela)
+  const [abertos, setAbertos] = useState(() => { try { return JSON.parse(localStorage.getItem("astra_abertos") || "{}"); } catch { return {}; } }); // { id: via }
+  const [respondendo, setRespondendo] = useState(null); // id do card com o campo "o que respondeu" aberto
   const [resposta, setResposta] = useState("");
-  const [salvando, setSalvando] = useState(false);
+  const [salvando, setSalvando] = useState(null); // id do card salvando
+  const lembrar = (id, via) => setAbertos((m) => {
+    const n = { ...m };
+    if (via) n[id] = via; else delete n[id];
+    try { localStorage.setItem("astra_abertos", JSON.stringify(n)); } catch { /* sem storage */ }
+    return n;
+  });
   const abrir = async (a, via) => {
     const p = a.gestao_prospects;
     const url = via === "whatsapp" ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}` : `https://ig.me/m/${p.instagram}`;
     // abre antes de qualquer espera, senão o navegador bloqueia a nova aba
     window.open(url, "_blank", "noopener");
+    lembrar(a.id, via);
     if (via !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada: cole no Direct do Instagram."); } catch { /* sem clipboard */ } }
-    setClassif({ a, via });
   };
   const copiar = async (a) => {
     try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada."); } catch { setMsg("Não consegui copiar; selecione o texto do card."); }
-    setClassif({ a, via: "outro" });
+    if (!abertos[a.id]) lembrar(a.id, "outro");
   };
   const marcarEnviada = async (a, via) => {
     const p = a.gestao_prospects;
@@ -656,9 +663,9 @@ function Aprovar() {
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
     await sb.from("gestao_prospects").update({ status: "descartado", quente_motivo: `Descartado: ${motivo}` }).eq("id", p.id);
   };
-  const classificar = async (op) => {
-    const { a, via } = classif, p = a.gestao_prospects;
-    setSalvando(true); setMsg("");
+  const classificar = async (a, via, op) => {
+    const p = a.gestao_prospects;
+    setSalvando(a.id); setMsg("");
     try {
       if (op === "enviei") { await marcarEnviada(a, via); setMsg(`${p.nome}: enviada. Se não responder, o follow-up aparece aqui sozinho.`); }
       if (op === "respondeu") {
@@ -674,8 +681,9 @@ function Aprovar() {
       if (op === "sem_whatsapp") { await tirarDaLista(a, "telefone sem WhatsApp"); setMsg(`${p.nome} saiu da lista (sem WhatsApp). A rotina põe outro lead no lugar.`); }
       if (op === "errado") { await tirarDaLista(a, "número errado ou não é desse negócio"); setMsg(`${p.nome} saiu da lista.`); }
       if (op === "nao_contatar") { await tirarDaLista(a, "pediu para não ser contatado"); setMsg(`${p.nome} não será mais contatado.`); }
+      lembrar(a.id, null);
     } catch (e) { setMsg(e.message); }
-    setSalvando(false); setClassif(null); setResposta(""); load();
+    setSalvando(null); setRespondendo(null); setResposta(""); load();
   };
   const descartar = async (a) => {
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", a.prospect_id).eq("status", "rascunho");
@@ -715,26 +723,36 @@ function Aprovar() {
               </div>
             );
           })()}
+          {(() => {
+            const p = a.gestao_prospects, aberto = abertos[a.id], ocupado = salvando === a.id;
+            // canal do envio: o que você abriu; senão o principal do card
+            const via = aberto || (waLink(p.telefone) && !(ehFixo(p.telefone) && p.instagram) ? "whatsapp" : p.instagram ? "instagram" : "outro");
+            const op = (id, rotulo, Icone, destaque) => (
+              <Btn size="sm" variant={destaque ? "neon" : "ghost"} disabled={ocupado} onClick={() => classificar(a, via, id)}>{Icone && <Icone size={13} />} {rotulo}</Btn>
+            );
+            return (
+              <div className={`mt-3 rounded-xl border p-3 ${aberto ? "border-[#22d3ee]/50 bg-[#22d3ee]/[0.05]" : "border-white/[0.07]"}`}>
+                <p className="mb-2 font-mono text-[0.58rem] uppercase tracking-[0.16em] text-titanium">{aberto ? "Como foi? Classifique para a Astra seguir" : "Já falou com esse lead? Classifique"}</p>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  {op("enviei", "Enviei", Check, !!aberto)}
+                  <Btn size="sm" variant="ghost" disabled={ocupado} onClick={() => { setRespondendo(respondendo === a.id ? null : a.id); setResposta(""); }}><MessageCircle size={13} /> Respondeu</Btn>
+                  {p.telefone && op("sem_whatsapp", "Sem WhatsApp", X)}
+                  {op("errado", "Número errado", X)}
+                  {op("nao_contatar", "Não contatar", X)}
+                </div>
+                {respondendo === a.id && (
+                  <div className="mt-2 space-y-2">
+                    <Textarea rows={2} placeholder="Cole aqui o que a pessoa respondeu (opcional)" value={resposta} onChange={(e) => setResposta(e.target.value)} />
+                    {op("respondeu", "Salvar resposta", Check, true)}
+                  </div>
+                )}
+                {ocupado && <p className="mt-2 text-xs text-titanium">Salvando…</p>}
+              </div>
+            );
+          })()}
         </Card>
       ))}
 
-      <Modal open={!!classif} onClose={() => !salvando && setClassif(null)} title={classif ? `Como foi com ${classif.a.gestao_prospects.nome}?` : ""}>
-        {classif && (
-          <div className="space-y-2">
-            <p className="mb-3 text-sm text-titanium">Classifique o contato para a Astra saber o próximo passo.</p>
-            <Btn className="w-full justify-start" variant="neon" disabled={salvando} onClick={() => classificar("enviei")}><Check size={14} /> Enviei, aguardando resposta</Btn>
-            <div className="rounded-xl border border-white/10 p-3">
-              <Textarea rows={2} placeholder="Já respondeu? Cole aqui o que a pessoa disse (opcional)" value={resposta} onChange={(e) => setResposta(e.target.value)} />
-              <Btn className="mt-2 w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("respondeu")}><MessageCircle size={14} /> Enviei e já respondeu</Btn>
-            </div>
-            {classif.via === "whatsapp" && <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("sem_whatsapp")}><X size={14} /> Número sem WhatsApp</Btn>}
-            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("errado")}><X size={14} /> Número errado / não é desse negócio</Btn>
-            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("nao_contatar")}><X size={14} /> Pediu para não ser contatado</Btn>
-            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => setClassif(null)}>Não consegui enviar agora (fica na fila)</Btn>
-            {salvando && <p className="text-sm text-titanium">Salvando…</p>}
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
