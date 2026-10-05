@@ -93,7 +93,7 @@ function paraClaude(contents: any[]) {
   return msgs;
 }
 
-async function chamarClaude(system: string, contents: any[], tools: any[], temperatura: number, modelo: string) {
+async function chamarClaude(system: string, contents: any[], tools: any[], temperatura: number, modelo: string, pensar: "rapido" | "normal" = "rapido") {
   const declaracoes = (tools?.[0]?.functionDeclarations ?? []).map((f: any) => ({
     name: f.name,
     description: f.description,
@@ -104,9 +104,10 @@ async function chamarClaude(system: string, contents: any[], tools: any[], tempe
     headers: { "content-type": "application/json", "x-api-key": CLAUDE_KEY(), "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: modelo,
-      max_tokens: 4096,
-      // Sonnet/Opus 5.x não aceitam temperature (a API devolve 400); Haiku 4.5 aceita
-      ...(/claude-(sonnet|opus|fable)-5/.test(modelo) ? { output_config: { effort: "low" } } : { temperature: temperatura }),
+      max_tokens: pensar === "normal" ? 8000 : 4096,
+      // Sonnet/Opus 5.x não aceitam temperature (a API devolve 400); Haiku 4.5 aceita.
+      // Com o dono ("normal") ela pensa mais antes de responder; com clientes, responde rápido.
+      ...(/claude-(sonnet|opus|fable)-5/.test(modelo) ? { output_config: { effort: pensar === "normal" ? "medium" : "low" } } : { temperature: temperatura }),
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: paraClaude(contents),
       ...(declaracoes.length ? { tools: declaracoes } : {}),
@@ -133,7 +134,7 @@ const semBlocosClaude = (contents: any[]) =>
 export async function conversar(system: string, contents: unknown[], tools: unknown[], temperatura = 0.6, m: Motor = {}) {
   if (m.motor === "claude" && CLAUDE_KEY()) {
     try {
-      return await chamarClaude(system, contents as any[], tools as any[], temperatura, m.modelo || "claude-haiku-4-5-20251001");
+      return await chamarClaude(system, contents as any[], tools as any[], temperatura, m.modelo || "claude-haiku-4-5-20251001", m.pensar);
     } catch (e) {
       console.error("claude falhou, usando gemini:", String(e).slice(0, 200));
     }

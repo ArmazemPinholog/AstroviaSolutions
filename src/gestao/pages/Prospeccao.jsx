@@ -5,8 +5,9 @@ import {
 } from "lucide-react";
 import {
   useG, Card, Btn, Field, Input, Textarea, Select, Badge, Modal, Empty, PageHead, Stat,
-  waLink, today, fmtDate, useConfirm,
+  waLink, fmtDate, useConfirm, ehFixo,
 } from "../ui";
+import { ClassificarContato } from "../classificar";
 import { sb } from "../supabase";
 import { agente, STATUS_LEAD, FONTES, corScore, igLink, igDm, followupVencido } from "../agente";
 
@@ -32,6 +33,8 @@ export default function Prospeccao() {
   }, []);
 
   const leads = db.prospects || [];
+  // leads que já têm mensagem esperando em Astra → Aprovar envios
+  const naFila = useMemo(() => new Set((db.abordagens || []).filter((a) => a.status === "rascunho").map((a) => a.prospect_id)), [db.abordagens]);
   const cont = useMemo(() => {
     const c = Object.fromEntries(STATUS_LEAD.map((s) => [s.id, 0]));
     leads.forEach((p) => (c[p.status] = (c[p.status] || 0) + 1));
@@ -102,7 +105,7 @@ export default function Prospeccao() {
       </div>
 
       <div className="mt-3 flex flex-col gap-2">
-        {lista.length ? lista.map((p) => <LeadLinha key={p.id} p={p} dias={dias} onOpen={() => setAberto(p.id)} />) : (
+        {lista.length ? lista.map((p) => <LeadLinha key={p.id} p={p} dias={dias} naFila={naFila.has(p.id)} onOpen={() => setAberto(p.id)} />) : (
           <Empty>{leads.length ? "Nenhum lead nesta aba." : "Nenhum lead ainda. Use o garimpo acima ou adicione um lead manual."}</Empty>
         )}
       </div>
@@ -276,8 +279,28 @@ function Links({ p }) {
   );
 }
 
-function LeadLinha({ p, dias, onOpen }) {
+/* manda o lead para Astra → Aprovar envios: a Astra escreve a mensagem e ela entra na fila */
+function useParaAprovar(p) {
+  const { load } = useG();
+  const [estado, setEstado] = useState(""); // "" | "escrevendo" | "ok" | mensagem de erro
+  const temWa = !!(p.telefone && waLink(p.telefone)), fixo = ehFixo(p.telefone);
+  const canal = temWa && !(fixo && p.instagram) ? "whatsapp" : p.instagram ? "instagram" : temWa ? "whatsapp" : "email";
+  const pode = !["descartado", "no_funil"].includes(p.status);
+  const mandar = async (e) => {
+    e?.stopPropagation();
+    setEstado("escrevendo");
+    try {
+      await agente("gerar_abordagem", { prospect_id: p.id, canal, tipo: p.status === "abordado" ? "followup" : "primeiro_contato", substituir: true, origem: "manual" });
+      await load();
+      setEstado("ok");
+    } catch (err) { setEstado(err.message || "Não deu certo"); }
+  };
+  return { estado, mandar, pode };
+}
+
+function LeadLinha({ p, dias, naFila, onOpen }) {
   const st = STATUS_LEAD.find((s) => s.id === p.status);
+  const fila = useParaAprovar(p);
   return (
     <Card className="flex cursor-pointer items-center gap-3 p-3 transition hover:border-white/20" onClick={onOpen}>
       <Score v={p.score} />
@@ -294,9 +317,14 @@ function LeadLinha({ p, dias, onOpen }) {
           {[FONTES[p.fonte], p.aberto_em && `aberto em ${fmtDate(p.aberto_em)}`, p.nicho, p.cidade, p.instagram && "@" + p.instagram, p.nota_google && `${p.nota_google}★ (${p.avaliacoes})`, p.seguidores && `${p.seguidores.toLocaleString("pt-BR")} seguidores`].filter(Boolean).join(" · ")}
         </p>
         {p.motivos?.length > 0 && <p className="mt-1 hidden truncate text-[0.7rem] text-titanium-dim sm:block">{p.motivos.slice(0, 3).join(" · ")}</p>}
+        {fila.estado && !["escrevendo", "ok"].includes(fila.estado) && <p className="mt-1 text-[0.7rem] text-[#ff9be9]">{fila.estado}</p>}
       </div>
       <span className="hidden sm:flex"><Links p={p} /></span>
-      <span className="hidden sm:block"><Btn size="sm" variant="ghost"><Sparkles size={12} /> Abordar</Btn></span>
+      {fila.pode && (naFila || fila.estado === "ok"
+        ? <span className="shrink-0"><Badge color="#34d399"><Check size={10} /> Em Aprovar envios</Badge></span>
+        : <Btn size="sm" variant="ghost" disabled={fila.estado === "escrevendo"} onClick={fila.mandar} title="A Astra escreve a mensagem e ela aparece em Astra → Aprovar envios">
+            {fila.estado === "escrevendo" ? <><Loader2 size={12} className="animate-spin" /> Escrevendo…</> : <><Send size={12} /> <span className="hidden sm:inline">Para</span> Aprovar</>}
+          </Btn>)}
     </Card>
   );
 }
@@ -488,6 +516,8 @@ function LeadModal({ id, onClose, chaves }) {
   const [busy, setBusy] = useState("");
   const [erro, setErro] = useState("");
   const [copiado, setCopiado] = useState(null);
+  const [abertos, setAbertos] = useState({}); // rascunhos que você abriu no WhatsApp/Direct
+  const [aviso, setAviso] = useState("");
   const [ask, confirmNode] = useConfirm();
 
   if (!p) return null;
@@ -510,25 +540,7 @@ function LeadModal({ id, onClose, chaves }) {
     await copiar(a);
     const url = a.canal === "whatsapp" ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}` : igDm(p.instagram);
     if (url) window.open(url, "_blank", "noopener");
-  };
-
-  const enviada = async (a) => {
-    setBusy("enviar");
-    try {
-      const agora = new Date().toISOString();
-      await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora }).eq("id", a.id);
-      await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho").neq("id", a.id);
-      if (a.tipo !== "resposta") await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
-      await sb.from("gestao_tarefas").insert({
-        titulo: `Follow-up: ${p.nome}`,
-        descricao: `Abordado por ${a.canal} em ${fmtDate(today())}. Se não respondeu, gere o follow-up na aba Prospecção.`,
-        responsavel: p.responsavel || uid,
-        prazo: addDias(cfg.followup_dias || 3),
-        prioridade: "media",
-      });
-      await load();
-    } catch (e) { setErro(e.message); }
-    setBusy("");
+    setAbertos((m) => ({ ...m, [a.id]: true }));
   };
 
   const status = async (s) => {
@@ -644,6 +656,7 @@ function LeadModal({ id, onClose, chaves }) {
           {chaves?.gemini === false && <p className="mt-2 text-xs text-[#fbbf24]">Falta a chave GEMINI_API_KEY nos Secrets do Supabase.</p>}
 
           <div className="mt-4 flex flex-col gap-3">
+            {aviso && <p className="text-sm text-[#22d3ee]">{aviso}</p>}
             {(conversou || p.status === "respondeu") && <Respondeu p={p} canal={canal} motor={motor} />}
             <Proposta p={p} />
             {msgs.map((a) => a.tipo === "recebida" ? (
@@ -652,9 +665,13 @@ function LeadModal({ id, onClose, chaves }) {
                 <p className="whitespace-pre-line">{a.texto}</p>
               </div>
             ) : (
-              <Rascunho key={a.id} a={a} copiado={copiado === a.id} busy={busy}
-                onCopiar={() => copiar(a)} onAbrir={() => abrirCanal(a)} onEnviada={() => enviada(a)}
-                podeAbrir={a.canal === "instagram" ? temIg : a.canal === "whatsapp" ? temWa : false} />
+              <Rascunho key={a.id} a={a} copiado={copiado === a.id}
+                onCopiar={() => copiar(a)} onAbrir={() => abrirCanal(a)}
+                podeAbrir={a.canal === "instagram" ? temIg : a.canal === "whatsapp" ? temWa : false}
+                classificar={a.status === "rascunho" && (
+                  <ClassificarContato a={a} p={p} uid={uid} via={a.canal} destaque={!!abertos[a.id]}
+                    onFeito={async (t, ok) => { setAviso(t); if (ok) await load(); }} />
+                )} />
             ))}
             {!msgs.length && <Empty>Gere a mensagem, revise e envie você mesmo. O agente registra o envio e agenda o follow-up.</Empty>}
           </div>
@@ -664,7 +681,7 @@ function LeadModal({ id, onClose, chaves }) {
   );
 }
 
-function Rascunho({ a, copiado, busy, onCopiar, onAbrir, onEnviada, podeAbrir }) {
+function Rascunho({ a, copiado, onCopiar, onAbrir, podeAbrir, classificar }) {
   const { load } = useG();
   const [txt, setTxt] = useState(a.texto);
   const mudou = txt !== a.texto;
@@ -685,12 +702,10 @@ function Rascunho({ a, copiado, busy, onCopiar, onAbrir, onEnviada, podeAbrir })
         <div className="mt-2 flex flex-wrap gap-2">
           {mudou && <Btn size="sm" variant="ghost" onClick={salvar}>Salvar edição</Btn>}
           <Btn size="sm" variant="ghost" onClick={onCopiar}><Copy size={12} /> {copiado ? "Copiado!" : "Copiar"}</Btn>
-          {podeAbrir && <Btn size="sm" variant="ghost" onClick={onAbrir}><ExternalLink size={12} /> Copiar e abrir {a.canal === "whatsapp" ? "WhatsApp" : "Direct"}</Btn>}
-          <Btn size="sm" className="ml-auto" disabled={!!busy || mudou} onClick={onEnviada} title={mudou ? "Salve a edição antes" : ""}>
-            <Send size={12} /> Marcar como enviada
-          </Btn>
+          {podeAbrir && <Btn size="sm" variant={mudou ? "ghost" : "neon"} disabled={mudou} onClick={onAbrir} title={mudou ? "Salve a edição antes" : ""}><ExternalLink size={12} /> Copiar e abrir {a.canal === "whatsapp" ? "WhatsApp" : "Direct"}</Btn>}
         </div>
       )}
+      {!enviadaJa && !mudou && classificar}
     </Card>
   );
 }
