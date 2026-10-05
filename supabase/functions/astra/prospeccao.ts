@@ -60,7 +60,7 @@ export const ferramentasProspeccao = [
   {
     name: "rodar_rotina_agora",
     description:
-      "Roda agora a rotina diária de prospecção (a mesma que roda sozinha toda manhã): garimpa, investiga e deixa leads e follow-ups em rascunho em Aprovar envios, até a meta do dia. Só use quando ele pedir.",
+      "Roda agora um lote extra da rotina de prospecção: garimpa, investiga e enche a fila de Aprovar envios até a meta (conta só o que ainda espera aprovação, então funciona mesmo depois de ele já ter enviado os do dia). Só use quando ele pedir.",
     parameters: { type: "object", properties: {} },
   },
   {
@@ -244,13 +244,14 @@ export async function executarProspeccao(db: SupabaseClient, nome: string, a: an
         taxa_resposta: abordados ? `${Math.round((responderam / abordados) * 100)}%` : "sem abordagens no período",
         reunioes: reunioes ?? 0,
         esperando_aprovacao: rascunhos ?? 0,
-        rotina_de_hoje: rot ?? "ainda não rodou hoje",
+        // leads_preparados conta tudo o que a rotina fez hoje, inclusive o que ele já enviou ou classificou
+        rotina_de_hoje: rot ? { ...rot, nota: "leads_preparados inclui os que ele já enviou hoje; o que falta aprovar agora é esperando_aprovacao" } : "ainda não rodou hoje",
       };
     }
     case "rodar_rotina_agora": {
       const d: any = await agente(auth, { acao: "rotina" });
       if (d.erro) return d;
-      return { ok: true, nota: "Rotina iniciada em segundo plano. Leva alguns minutos; os rascunhos aparecem em Aprovar envios e eu aviso aqui quando terminar." };
+      return { ok: true, nota: "Rotina iniciada em segundo plano. Cada rodada leva até uns 3 minutos e pode não completar a meta de uma vez; os rascunhos vão aparecendo em Aprovar envios. Você NÃO recebe aviso quando termina: diga para ele olhar a fila em alguns minutos e, se vier pouco, pedir de novo." };
     }
     case "editar_mensagem": {
       const id = uuid(a.prospect_id), texto = limpar(a.texto, 1500);

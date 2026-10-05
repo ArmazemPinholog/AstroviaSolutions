@@ -1364,6 +1364,12 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
     const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", tipo).in("status", ["rascunho", "enviada"]).gte("criado_em", desde);
     return new Set((data || []).map((x) => x.prospect_id)).size;
   };
+  // "Rodar agora" prepara um lote novo: conta só o que ainda espera aprovação na fila,
+  // senão, depois de você enviar os 10 do dia, ela achava a meta batida e não fazia nada
+  const naFila = async () => {
+    const { data } = await sb.from("gestao_abordagens").select("prospect_id").eq("origem", "rotina").eq("tipo", "primeiro_contato").eq("status", "rascunho");
+    return new Set((data || []).map((x) => x.prospect_id)).size;
+  };
 
   try {
     // 1) follow-ups: abordados há X dias sem resposta, até max_followups por lead
@@ -1389,7 +1395,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
     }
 
     // 2) leads novos até a meta do dia
-    let feitos = await contar("primeiro_contato");
+    let feitos = manual ? await naFila() : await contar("primeiro_contato");
     const tentados = new Set<string>();
     const nichos = r.nichos || (cfg?.nichos?.length ? cfg.nichos : ["barbearia", "clínica de estética", "salão de beleza", "oficina mecânica"]);
     const doAno = Math.floor((Date.now() - Date.parse(`${dia.slice(0, 4)}-01-01`)) / 864e5);
@@ -1439,7 +1445,7 @@ async function rotina(sb: SupabaseClient, manual: boolean) {
 
   // fecha a rodada
   const [leads, followups] = await Promise.all([contar("primeiro_contato"), contar("followup")]);
-  const concluida = leads >= r.meta;
+  const concluida = manual ? (await naFila()) >= r.meta || leads >= r.meta : leads >= r.meta;
   const fimDaJanela = horaBR() >= 8.5;
   const status = concluida ? "concluida" : erro ? "erro" : fimDaJanela || manual ? "parcial" : "rodando";
   let avisado = !!reg.avisado;
