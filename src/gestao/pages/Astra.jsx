@@ -206,8 +206,16 @@ export function Conversa({ modo, compacto = false }) {
       setMsgs(() => (data || []).reverse().map((m) => ({ de: m.papel === "agente" ? "astra" : "eu", txt: m.conteudo })));
     })();
   }, [modo]); // eslint-disable-line react-hooks/exhaustive-deps
-  // rola só a caixa da conversa (nunca a página inteira)
-  useEffect(() => { const el = fim.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }, [msgs, estado]);
+  // rola só a caixa da conversa (nunca a página inteira); ao abrir já começa no fim, sem animação
+  const jaRolou = useRef(false);
+  useEffect(() => {
+    const el = fim.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: jaRolou.current ? "smooth" : "auto" });
+    if (msgs.length) jaRolou.current = true;
+  }, [msgs, estado]);
+  // no celular o topo encolhe para sobrar espaço para a conversa
+  const [celular] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches);
 
   useEffect(() => {
     if (estado !== "pensando") return;
@@ -306,19 +314,19 @@ export function Conversa({ modo, compacto = false }) {
 
   return (
     <Card className={`flex flex-col overflow-hidden ${compacto ? "h-full rounded-none border-0" : "h-[calc(100dvh-9rem)] min-h-[420px] sm:h-[min(86dvh,900px)] sm:min-h-[560px]"}`}>
-      <div className={`flex items-center gap-4 border-b border-white/[0.06] p-4 ${compacto ? "pr-20" : ""}`}>
-        <Orb estado={estado} nivelRef={nivel} size={compacto ? 72 : 120} />
+      <div className={`flex items-center gap-3 border-b border-white/[0.06] p-3 sm:gap-4 sm:p-4 ${compacto ? "pr-20" : ""}`}>
+        <Orb estado={estado} nivelRef={nivel} size={celular ? 52 : compacto ? 72 : 120} />
         <div className="min-w-0 flex-1">
-          <p className="font-display text-2xl font-semibold tracking-[0.14em]">
+          <p className="font-display text-xl font-semibold tracking-[0.14em] sm:text-2xl">
             <span className="bg-gradient-to-r from-[#22d3ee] to-[#ff2fd0] bg-clip-text text-transparent">ASTRA</span>
           </p>
-          <p className="text-sm text-titanium">{modo === "dono" ? "O cérebro da operação de vendas: garimpa, escreve, acompanha e te ensina. Enxerga a sala inteira." : "Fale como um cliente para testar o atendimento. Não entra no funil."}</p>
+          <p className="hidden text-sm text-titanium sm:block">{modo === "dono" ? "O cérebro da operação de vendas: garimpa, escreve, acompanha e te ensina. Enxerga a sala inteira." : "Fale como um cliente para testar o atendimento. Não entra no funil."}</p>
           <p className="mt-1 flex items-center gap-2 font-mono text-[0.58rem] uppercase tracking-[0.2em] text-[#22d3ee]">
             <span className="h-1.5 w-1.5 rounded-full bg-[#22d3ee] shadow-[0_0_8px_#22d3ee]" /> {rotulo}
           </p>
         </div>
         <Btn size="sm" variant={voz ? "neon" : "ghost"} onClick={alternarVoz} aria-pressed={voz} title="Ouvir as respostas em voz">
-          {voz ? <Volume2 size={14} /> : <VolumeX size={14} />} {voz ? "Voz ligada" : "Voz"}
+          {voz ? <Volume2 size={14} /> : <VolumeX size={14} />} <span className="hidden sm:inline">{voz ? "Voz ligada" : "Voz"}</span>
         </Btn>
       </div>
 
@@ -357,11 +365,12 @@ export function Conversa({ modo, compacto = false }) {
         {estado === "pensando" && <p className="animate-pulse font-mono text-[0.62rem] uppercase tracking-[0.2em] text-titanium">{modo === "dono" ? ESPERA[espera] : "Astra está digitando…"}</p>}
       </div>
 
-      <div className="border-t border-white/[0.06] p-4">
+      <div className="border-t border-white/[0.06] p-3 sm:p-4">
         {modo === "dono" && !compacto && (
-          <div className="mb-3 flex flex-wrap gap-2">
+          // no celular os atalhos ficam numa linha só, rolando para o lado
+          <div className="-mx-3 mb-3 flex gap-2 overflow-x-auto px-3 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
             {ATALHOS.map((a) => (
-              <button key={a} onClick={() => enviar(a)} className="rounded-full border border-white/10 px-3 py-1 text-xs text-titanium transition hover:border-[#22d3ee]/50 hover:text-white">{a}</button>
+              <button key={a} onClick={() => enviar(a)} className="shrink-0 whitespace-nowrap rounded-full border border-white/10 px-3 py-1 text-xs text-titanium transition hover:border-[#22d3ee]/50 hover:text-white sm:whitespace-normal">{a}</button>
             ))}
           </div>
         )}
@@ -370,7 +379,7 @@ export function Conversa({ modo, compacto = false }) {
         <form onSubmit={submit} className="flex items-end gap-2">
           <Textarea
             rows={1}
-            placeholder={modo === "dono" ? "Fale com a Astra… (ex.: aprenda que…)" : "Escreva como um cliente…"}
+            placeholder={modo === "dono" ? (celular ? "Fale com a Astra…" : "Fale com a Astra… (ex.: aprenda que…)") : "Escreva como um cliente…"}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(e); } }}
