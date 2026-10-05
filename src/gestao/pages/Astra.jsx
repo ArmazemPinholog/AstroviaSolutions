@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play, Wand2, ExternalLink } from "lucide-react";
 import { sb } from "../supabase";
 import { agente } from "../agente";
-import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink, ehFixo } from "../ui";
+import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, Modal, fmtDate, waLink, ehFixo } from "../ui";
 import { X, Check } from "lucide-react";
 
 /* ============================================================
@@ -276,8 +276,8 @@ export function Conversa({ modo, compacto = false }) {
   const rotulo = { idle: "em espera", ouvindo: "ouvindo", pensando: "pensando", falando: "respondendo" }[estado];
 
   return (
-    <Card className={`flex flex-col overflow-hidden ${compacto ? "h-full rounded-none border-0" : "h-[min(80vh,780px)] min-h-[520px]"}`}>
-      <div className="flex items-center gap-4 border-b border-white/[0.06] p-4">
+    <Card className={`flex flex-col overflow-hidden ${compacto ? "h-full rounded-none border-0" : "h-[calc(100dvh-9rem)] min-h-[420px] sm:h-[min(80dvh,780px)] sm:min-h-[520px]"}`}>
+      <div className={`flex items-center gap-4 border-b border-white/[0.06] p-4 ${compacto ? "pr-12" : ""}`}>
         <Orb estado={estado} nivelRef={nivel} size={compacto ? 56 : 92} />
         <div className="min-w-0 flex-1">
           <p className="font-display text-2xl font-semibold tracking-[0.14em]">
@@ -624,36 +624,58 @@ function Aprovar() {
   // a rotina e a Astra podem criar rascunhos a qualquer momento
   useEffect(() => { const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
 
-  // 1º clique abre o WhatsApp/Instagram; o lead só vira "abordado" quando você confirma que a mensagem saiu
-  const [abertos, setAbertos] = useState({});
+  // 1º clique abre o WhatsApp/Instagram e já pergunta como foi: o lead só muda de situação pela sua classificação
+  const [classif, setClassif] = useState(null); // { a, via }
+  const [resposta, setResposta] = useState("");
+  const [salvando, setSalvando] = useState(false);
   const abrir = async (a, via) => {
     const p = a.gestao_prospects;
     const url = via === "whatsapp" ? `${waLink(p.telefone)}?text=${encodeURIComponent(a.texto)}` : `https://ig.me/m/${p.instagram}`;
     // abre antes de qualquer espera, senão o navegador bloqueia a nova aba
     window.open(url, "_blank", "noopener");
     if (via !== "whatsapp") { try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada: cole no Direct do Instagram."); } catch { /* sem clipboard */ } }
-    setAbertos((x) => ({ ...x, [a.id]: via }));
+    setClassif({ a, via });
   };
   const copiar = async (a) => {
     try { await navigator.clipboard.writeText(a.texto); setMsg("Mensagem copiada."); } catch { setMsg("Não consegui copiar; selecione o texto do card."); }
+    setClassif({ a, via: "outro" });
   };
-  const semWhatsapp = async (a) => {
-    const p = a.gestao_prospects;
-    await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
-    await sb.from("gestao_prospects").update({ status: "descartado", quente_motivo: "Descartado: telefone sem WhatsApp" }).eq("id", p.id);
-    setMsg(`${p.nome} saiu da lista (sem WhatsApp). A rotina põe outro lead no lugar.`);
-    load();
-  };
-  const enviar = async (a) => {
+  const marcarEnviada = async (a, via) => {
     const p = a.gestao_prospects;
     const agora = new Date().toISOString();
-    const via = abertos[a.id] || a.canal;
-    await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora, canal: via }).eq("id", a.id);
+    await sb.from("gestao_abordagens").update({ status: "enviada", enviada_em: agora, canal: via === "outro" ? a.canal : via }).eq("id", a.id);
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
     await sb.from("gestao_prospects").update({ status: "abordado", abordado_em: agora, responsavel: p.responsavel || uid }).eq("id", p.id);
-    const prazo = new Date(Date.now() + 3 * 86400e3).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
-    await sb.from("gestao_tarefas").insert({ titulo: `Follow-up: ${p.nome}`, descricao: `Abordado por ${via}. Se não respondeu, a Astra prepara o follow-up sozinha.`, responsavel: p.responsavel || uid, prazo, prioridade: "media" });
-    load();
+    if (a.tipo === "primeiro_contato") {
+      const prazo = new Date(Date.now() + 3 * 86400e3).toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" });
+      await sb.from("gestao_tarefas").insert({ titulo: `Follow-up: ${p.nome}`, descricao: `Abordado por ${via}. Se não responder, a Astra prepara o follow-up sozinha.`, responsavel: p.responsavel || uid, prazo, prioridade: "media" });
+    }
+  };
+  const tirarDaLista = async (a, motivo) => {
+    const p = a.gestao_prospects;
+    await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", p.id).eq("status", "rascunho");
+    await sb.from("gestao_prospects").update({ status: "descartado", quente_motivo: `Descartado: ${motivo}` }).eq("id", p.id);
+  };
+  const classificar = async (op) => {
+    const { a, via } = classif, p = a.gestao_prospects;
+    setSalvando(true); setMsg("");
+    try {
+      if (op === "enviei") { await marcarEnviada(a, via); setMsg(`${p.nome}: enviada. Se não responder, o follow-up aparece aqui sozinho.`); }
+      if (op === "respondeu") {
+        await marcarEnviada(a, via);
+        if (resposta.trim()) {
+          const r = await agente("responder", { prospect_id: p.id, texto: resposta.trim(), canal: via === "instagram" ? "instagram" : "whatsapp" });
+          setMsg(`${p.nome} respondeu. ${r.leitura || ""} Próximo passo: ${r.proximo_passo || "seguir a conversa"}. A sugestão de resposta já está na fila.`);
+        } else {
+          await sb.from("gestao_prospects").update({ status: "respondeu" }).eq("id", p.id);
+          setMsg(`${p.nome} marcado como "respondeu".`);
+        }
+      }
+      if (op === "sem_whatsapp") { await tirarDaLista(a, "telefone sem WhatsApp"); setMsg(`${p.nome} saiu da lista (sem WhatsApp). A rotina põe outro lead no lugar.`); }
+      if (op === "errado") { await tirarDaLista(a, "número errado ou não é desse negócio"); setMsg(`${p.nome} saiu da lista.`); }
+      if (op === "nao_contatar") { await tirarDaLista(a, "pediu para não ser contatado"); setMsg(`${p.nome} não será mais contatado.`); }
+    } catch (e) { setMsg(e.message); }
+    setSalvando(false); setClassif(null); setResposta(""); load();
   };
   const descartar = async (a) => {
     await sb.from("gestao_abordagens").update({ status: "descartada" }).eq("prospect_id", a.prospect_id).eq("status", "rascunho");
@@ -675,21 +697,13 @@ function Aprovar() {
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <p className="font-medium">{a.gestao_prospects.nome}</p>
             {a.gestao_prospects.score != null && <Badge color="#22d3ee">Nota {a.gestao_prospects.score}</Badge>}
-            <Badge color="#a1a1aa">{a.canal}{a.tipo === "followup" ? " · follow-up" : ""}</Badge>
+            <Badge color="#a1a1aa">{a.canal}{a.tipo === "followup" ? " · follow-up" : a.tipo === "resposta" ? " · resposta" : ""}</Badge>
             {a.origem === "rotina" && <Badge color="#a78bfa">Rotina da Astra</Badge>}
             {a.gestao_prospects.fonte === "receita" && <Badge color="#fbbf24">CNPJ novo{a.gestao_prospects.aberto_em ? ` · ${fmtDate(a.gestao_prospects.aberto_em)}` : ""}</Badge>}
           </div>
           <p className="whitespace-pre-wrap text-sm text-titanium">{a.texto}</p>
           {(() => {
             const p = a.gestao_prospects, fixo = ehFixo(p.telefone), temWa = !!waLink(p.telefone);
-            if (abertos[a.id]) return (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="text-sm text-titanium-bright">A mensagem saiu?</span>
-                <Btn size="sm" variant="neon" onClick={() => enviar(a)}><Check size={13} /> Sim, enviei</Btn>
-                <Btn size="sm" variant="ghost" onClick={() => setAbertos((x) => ({ ...x, [a.id]: null }))}>Não deu</Btn>
-                {abertos[a.id] === "whatsapp" && <Btn size="sm" variant="ghost" onClick={() => semWhatsapp(a)}>Número sem WhatsApp</Btn>}
-              </div>
-            );
             return (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {fixo && <Badge color="#fbbf24">Telefone fixo: pode não ter WhatsApp</Badge>}
@@ -703,6 +717,24 @@ function Aprovar() {
           })()}
         </Card>
       ))}
+
+      <Modal open={!!classif} onClose={() => !salvando && setClassif(null)} title={classif ? `Como foi com ${classif.a.gestao_prospects.nome}?` : ""}>
+        {classif && (
+          <div className="space-y-2">
+            <p className="mb-3 text-sm text-titanium">Classifique o contato para a Astra saber o próximo passo.</p>
+            <Btn className="w-full justify-start" variant="neon" disabled={salvando} onClick={() => classificar("enviei")}><Check size={14} /> Enviei, aguardando resposta</Btn>
+            <div className="rounded-xl border border-white/10 p-3">
+              <Textarea rows={2} placeholder="Já respondeu? Cole aqui o que a pessoa disse (opcional)" value={resposta} onChange={(e) => setResposta(e.target.value)} />
+              <Btn className="mt-2 w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("respondeu")}><MessageCircle size={14} /> Enviei e já respondeu</Btn>
+            </div>
+            {classif.via === "whatsapp" && <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("sem_whatsapp")}><X size={14} /> Número sem WhatsApp</Btn>}
+            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("errado")}><X size={14} /> Número errado / não é desse negócio</Btn>
+            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => classificar("nao_contatar")}><X size={14} /> Pediu para não ser contatado</Btn>
+            <Btn className="w-full justify-start" variant="ghost" disabled={salvando} onClick={() => setClassif(null)}>Não consegui enviar agora (fica na fila)</Btn>
+            {salvando && <p className="text-sm text-titanium">Salvando…</p>}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -963,13 +995,14 @@ export function AstraFlutuante() {
   return (
     <>
       {aberta && (
-        <div className="fixed inset-x-0 bottom-0 z-50 h-[75vh] border-t border-white/10 bg-[#030305] shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[600px] sm:w-[400px] sm:rounded-2xl sm:border">
+        <div className="fixed inset-x-0 bottom-0 z-50 h-[85dvh] border-t border-white/10 bg-[#030305] shadow-2xl sm:inset-x-auto sm:bottom-24 sm:right-6 sm:h-[600px] sm:w-[400px] sm:rounded-2xl sm:border">
           <button onClick={() => setAberta(false)} aria-label="Fechar a Astra" className="absolute right-3 top-3 z-10 rounded-full p-1.5 text-titanium hover:text-white"><X size={16} /></button>
           <Conversa modo="dono" compacto />
         </div>
       )}
+      {/* no celular, com a Astra aberta, o botão some para não cobrir o campo de mensagem */}
       <button onClick={() => setAberta((v) => !v)} aria-label="Falar com a Astra"
-        className="fixed bottom-5 right-5 z-50 grid h-14 w-14 place-items-center rounded-full border border-white/15 bg-[#030305] shadow-[0_0_24px_rgba(34,211,238,0.35)]">
+        className={`${aberta ? "hidden sm:grid" : "grid"} fixed bottom-5 right-5 z-50 h-14 w-14 place-items-center rounded-full border border-white/15 bg-[#030305] shadow-[0_0_24px_rgba(34,211,238,0.35)]`}>
         <Sparkles size={22} className="text-[#22d3ee]" />
       </button>
     </>

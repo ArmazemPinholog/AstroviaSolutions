@@ -83,7 +83,8 @@ export function Field({ label, children, className = "", hint }) {
 }
 
 const inputCls =
-  "h-10 w-full rounded-xl border border-white/10 bg-[#05050a] px-3 text-sm text-white outline-none transition placeholder:text-titanium-dim focus:border-[#22d3ee]/60 focus:ring-2 focus:ring-[#22d3ee]/15";
+  // 16px no celular: abaixo disso o navegador (principalmente o iPhone) dá zoom sozinho ao tocar no campo
+  "h-10 w-full rounded-xl border border-white/10 bg-[#05050a] px-3 text-base sm:text-sm text-white outline-none transition placeholder:text-titanium-dim focus:border-[#22d3ee]/60 focus:ring-2 focus:ring-[#22d3ee]/15";
 
 export function Input(p) {
   return <input className={inputCls} {...p} value={p.value ?? ""} />;
@@ -156,7 +157,7 @@ export function Modal({ open, onClose, title, children, footer, wide }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={onClose}>
       <div
         onMouseDown={(e) => e.stopPropagation()}
-        className={`flex max-h-[92vh] w-full flex-col rounded-t-3xl border border-white/10 bg-[#08080e] shadow-2xl sm:rounded-3xl ${wide ? "sm:max-w-4xl" : "sm:max-w-xl"}`}
+        className={`flex max-h-[92dvh] w-full flex-col rounded-t-3xl border border-white/10 bg-[#08080e] shadow-2xl sm:rounded-3xl ${wide ? "sm:max-w-4xl" : "sm:max-w-xl"}`}
       >
         <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] px-5 py-4">
           <h3 className="font-display text-lg text-white">{title}</h3>
