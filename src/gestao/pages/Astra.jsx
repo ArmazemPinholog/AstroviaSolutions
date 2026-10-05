@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Mic, Square, Brain, Settings2, MessagesSquare, Trash2, RotateCcw, Save, Plus, UserRound, Sparkles, Volume2, VolumeX, Cpu, BarChart3, Users, MessageCircle, CalendarCheck, Play, Wand2, ExternalLink } from "lucide-react";
 import { sb } from "../supabase";
 import { agente } from "../agente";
-import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, Modal, fmtDate, waLink, ehFixo } from "../ui";
+import { useG, Card, Btn, Field, Input, Textarea, Select, Badge, PageHead, Empty, Stat, fmtDate, waLink, ehFixo } from "../ui";
 import { X, Check } from "lucide-react";
 
 /* ============================================================
